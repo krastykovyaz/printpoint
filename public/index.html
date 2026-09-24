@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Send your resume to print in a few clicks." />
+    <title>QuickPrint — Resume printing</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="order-panel" aria-labelledby="form-title">
+        <div class="panel-heading">
+          <h2 id="form-title">Print Point</h2>
+        </div>
+
+        <form id="order-form" novalidate>
+          <fieldset class="form-group">
+            <legend>1. Attach your resume</legend>
+            <label class="dropzone" id="dropzone" for="resume">
+              <input id="resume" name="resume" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required />
+              <span class="upload-icon" aria-hidden="true">↑</span>
+              <span class="upload-title">Choose a file or drag it here</span>
+              <span class="upload-note">PDF, DOC or DOCX · max 10 MB</span>
+            </label>
+            <p class="file-name" id="file-name" aria-live="polite"></p>
+          </fieldset>
+
+          <div class="form-row">
+            <fieldset class="form-group">
+              <legend>2. Number of copies</legend>
+              <div class="stepper" aria-label="Number of copies">
+                <button type="button" class="stepper-button" id="decrease" aria-label="Decrease copies">−</button>
+                <input id="copies" name="copies" type="number" min="1" max="100" value="1" inputmode="numeric" required />
+                <button type="button" class="stepper-button" id="increase" aria-label="Increase copies">+</button>
+              </div>
+            </fieldset>
+
+            <fieldset class="form-group">
+              <legend>3. Print in</legend>
+              <div class="choice-grid">
+                <label class="choice">
+                  <input type="radio" name="printMode" value="black-white" checked />
+                  <span><b class="bw-icon" aria-hidden="true"></b>Black & white</span>
+                </label>
+                <label class="choice">
+                  <input type="radio" name="printMode" value="color" />
+                  <span><b class="color-icon" aria-hidden="true"></b>Color</span>
+                </label>
+              </div>
+            </fieldset>
+          </div>
+
+          <fieldset class="form-group email-group">
+            <legend>4. Your email address</legend>
+            <label class="sr-only" for="email">Email address</label>
+            <input id="email" name="email" type="email" placeholder="you@example.com" autocomplete="email" required />
+            <p>We’ll email a confirmation to this address.</p>
+          </fieldset>
+
+          <button class="submit-button" id="submit-button" type="submit">
+            <span>Send print request</span><span aria-hidden="true">→</span>
+          </button>
+          <p class="form-message" id="form-message" aria-live="polite"></p>
+        </form>
+      </section>
+    </main>
+    <footer><span>QUICKPRINT</span><span>Simple prints. Serious opportunities.</span></footer>
+    <script src="/app.js"></script>
+  </body>
+</html>
