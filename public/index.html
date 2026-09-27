@@ -4,7 +4,25 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Send your resume to print in a few clicks." />
-    <title>QuickPrint — Resume printing</title>
+    <title>Print Point — Resume printing</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="64x64" href="/favicon-64.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Print Point" />
+    <meta property="og:title" content="Print Point — Resume printing" />
+    <meta property="og:description" content="Attach your resume, choose copies & color, pay, and get it printed." />
+    <meta property="og:url" content="https://print.unilu.space/" />
+    <meta property="og:image" content="https://print.unilu.space/preview.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Print Point — Resume printing" />
+    <meta name="twitter:description" content="Attach your resume, choose copies & color, pay, and get it printed." />
+    <meta name="twitter:image" content="https://print.unilu.space/preview.png" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap" rel="stylesheet" />
@@ -14,61 +32,117 @@
     <main class="page-shell">
       <section class="order-panel" aria-labelledby="form-title">
         <div class="panel-heading">
+          <div class="lang-switcher">
+            <label class="sr-only" for="language-select" data-i18n="langLabel">Select language</label>
+            <select id="language-select" aria-label="Select language">
+              <option value="en">English</option>
+              <option value="zh">中文</option>
+              <option value="hi">हिन्दी</option>
+              <option value="es">Español</option>
+              <option value="fr">Français</option>
+              <option value="ar">العربية</option>
+              <option value="bn">বাংলা</option>
+              <option value="pt">Português</option>
+              <option value="ru">Русский</option>
+              <option value="ur">اردو</option>
+              <option value="ja">日本語</option>
+            </select>
+          </div>
           <h2 id="form-title">Print Point</h2>
         </div>
 
         <form id="order-form" novalidate>
           <fieldset class="form-group">
-            <legend>1. Attach your resume</legend>
+            <legend data-i18n="step1">1. Attach your resume</legend>
+            <a class="no-cv-link" href="https://tsech.online/?mode=cv" target="_blank" rel="noopener noreferrer" data-i18n="noCvLink">Don't have a resume yet? Create one here →</a>
             <label class="dropzone" id="dropzone" for="resume">
               <input id="resume" name="resume" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required />
               <span class="upload-icon" aria-hidden="true">↑</span>
-              <span class="upload-title">Choose a file or drag it here</span>
-              <span class="upload-note">PDF, DOC or DOCX · max 10 MB</span>
+              <span class="upload-title" data-i18n="uploadTitle">Choose a file or drag it here</span>
+              <span class="upload-note" data-i18n="uploadNote">PDF, DOC or DOCX · max 10 MB</span>
             </label>
             <p class="file-name" id="file-name" aria-live="polite"></p>
           </fieldset>
 
           <div class="form-row">
             <fieldset class="form-group">
-              <legend>2. Number of copies</legend>
-              <div class="stepper" aria-label="Number of copies">
-                <button type="button" class="stepper-button" id="decrease" aria-label="Decrease copies">−</button>
-                <input id="copies" name="copies" type="number" min="1" max="100" value="1" inputmode="numeric" required />
-                <button type="button" class="stepper-button" id="increase" aria-label="Increase copies">+</button>
+              <legend data-i18n="step2">2. Number of copies</legend>
+              <div class="stepper" aria-label="Number of copies" data-i18n-aria-label="copiesAria">
+                <button type="button" class="stepper-button" id="decrease" aria-label="Decrease copies" data-i18n-aria-label="decreaseAria">−</button>
+                <input id="copies" name="copies" type="number" min="4" max="100" value="4" inputmode="numeric" required />
+                <button type="button" class="stepper-button" id="increase" aria-label="Increase copies" data-i18n-aria-label="increaseAria">+</button>
               </div>
             </fieldset>
 
             <fieldset class="form-group">
-              <legend>3. Print in</legend>
+              <legend data-i18n="step3">3. Print in</legend>
               <div class="choice-grid">
                 <label class="choice">
                   <input type="radio" name="printMode" value="black-white" checked />
-                  <span><b class="bw-icon" aria-hidden="true"></b>Black & white</span>
+                  <span><b class="bw-icon" aria-hidden="true"></b><span data-i18n="bw">Black & white</span></span>
                 </label>
                 <label class="choice">
                   <input type="radio" name="printMode" value="color" />
-                  <span><b class="color-icon" aria-hidden="true"></b>Color</span>
+                  <span><b class="color-icon" aria-hidden="true"></b><span data-i18n="color">Color</span></span>
                 </label>
               </div>
             </fieldset>
           </div>
 
+          <div class="price-summary" id="price-summary">
+            <p class="price-rates" data-i18n="priceRatesNote">Black &amp; white: €0.50/page, €0.30/additional page after 10. Color: €0.60/page, €0.40/additional page after 10. Minimum order: 4 pages.</p>
+            <p class="price-total"><span data-i18n="totalLabel">Total service</span>: <strong id="price-total-amount"></strong></p>
+          </div>
+
           <fieldset class="form-group email-group">
-            <legend>4. Your email address</legend>
-            <label class="sr-only" for="email">Email address</label>
+            <legend data-i18n="step4">4. Contact &amp; pickup details</legend>
+            <label class="sr-only" for="email" data-i18n="emailLabel">Email address</label>
             <input id="email" name="email" type="email" placeholder="you@example.com" autocomplete="email" required />
-            <p>We’ll email a confirmation to this address.</p>
+            <p data-i18n="emailNote">We’ll email a confirmation to this address.</p>
+
+            <label class="sr-only" for="phone" data-i18n="phoneLabel">Phone number (optional)</label>
+            <input id="phone" name="phone" type="tel" placeholder="+352 621 234 567" autocomplete="tel" />
+            <p data-i18n="phoneNote">Optional — we may call or message you when your order is ready.</p>
+
+            <div class="payment-box" id="payment-box" hidden>
+              <p class="payment-note" data-i18n="payInstruction">Pay via Revolut before submitting, then use your email as the payment note so we can match it to your order.</p>
+              <a class="payment-link" id="payment-link" href="https://revolut.me/kovyaz" target="_blank" rel="noopener noreferrer">
+                <span data-i18n="payButton">Pay on Revolut</span> <strong id="payment-amount"></strong>
+              </a>
+            </div>
+
+            <label class="sr-only" for="location" data-i18n="locationLabel">Pickup or delivery location</label>
+            <input id="location" name="location" type="text" placeholder="e.g. Maison du Savoir reception, or a delivery address" />
+            <p data-i18n="locationNote">Optional — tell us where to hand off your prints.</p>
+            <button type="button" class="location-share-btn" id="share-location-btn">
+              <span data-i18n="shareLocationButton">📍 Share my exact location</span>
+            </button>
+            <p class="location-share-status" id="location-share-status" aria-live="polite"></p>
           </fieldset>
 
+          <div class="modal-overlay" id="payment-proof-overlay" hidden>
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="payment-proof-title">
+              <h3 id="payment-proof-title" data-i18n="paymentProofTitle">Attach your payment confirmation</h3>
+              <p data-i18n="paymentProofNote">After paying on Revolut, attach a screenshot or PDF of the payment as proof.</p>
+              <label class="dropzone" id="payment-proof-dropzone" for="payment-proof">
+                <input id="payment-proof" name="paymentProof" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*" />
+                <span class="upload-icon" aria-hidden="true">↑</span>
+                <span class="upload-title" data-i18n="uploadTitle">Choose a file or drag it here</span>
+                <span class="upload-note" data-i18n="paymentProofUploadNote">PDF, JPG or PNG · max 10 MB</span>
+              </label>
+              <p class="file-name" id="payment-proof-file-name" aria-live="polite"></p>
+            </div>
+          </div>
+
           <button class="submit-button" id="submit-button" type="submit">
-            <span>Send print request</span><span aria-hidden="true">→</span>
+            <span data-i18n="submit">Send print request</span><span aria-hidden="true">→</span>
           </button>
           <p class="form-message" id="form-message" aria-live="polite"></p>
         </form>
       </section>
     </main>
-    <footer><span>QUICKPRINT</span><span>Simple prints. Serious opportunities.</span></footer>
+    <footer><span data-i18n="footerTagline">Simple prints. Serious opportunities.</span></footer>
+    <script src="/i18n.js"></script>
     <script src="/app.js"></script>
   </body>
 </html>
