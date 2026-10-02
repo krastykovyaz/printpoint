@@ -28,12 +28,28 @@ const locationInput = document.querySelector("#location");
 const shareLocationButton = document.querySelector("#share-location-btn");
 const locationShareStatus = document.querySelector("#location-share-status");
 
+const pagesInput = document.querySelector("#pages");
+
 const MIN_ORDER = 4;
+const MAX_PAGES = 50;
 const BULK_THRESHOLD = 10;
 const REVOLUT_TAG = "kovyaz";
+// Keep in sync with RATES_CENTS in server.js, which sets the price recorded on the order.
 const RATES = {
   "black-white": { standard: 0.5, bulk: 0.3 },
   color: { standard: 0.6, bulk: 0.4 }
+};
+
+// Shown when the server reports one of these error codes; other errors use the server's text.
+const ERROR_KEYS = {
+  resume_required: "resumeRequired",
+  email_invalid: "emailRequired",
+  file_type: "errFileType",
+  file_too_large: "errFileTooLarge",
+  too_many_requests: "errTooMany",
+  delivery_failed: "errGeneric",
+  unavailable: "errGeneric",
+  server_error: "errGeneric"
 };
 
 function getSelectedPrintMode() {
@@ -41,18 +57,27 @@ function getSelectedPrintMode() {
   return checked ? checked.value : "black-white";
 }
 
-function calculateTotal(rawCopies, printMode) {
-  const count = Math.max(MIN_ORDER, Number(rawCopies) || MIN_ORDER);
-  const rates = RATES[printMode] || RATES["black-white"];
-  const standardCount = Math.min(count, BULK_THRESHOLD);
-  const extraCount = Math.max(0, count - BULK_THRESHOLD);
+function getOrderSize() {
+  const copyCount = Math.max(MIN_ORDER, Math.floor(Number(copies.value)) || MIN_ORDER);
+  const pageCount = Math.min(MAX_PAGES, Math.max(1, Math.floor(Number(pagesInput && pagesInput.value)) || 1));
+  return { copyCount, pageCount, totalPages: copyCount * pageCount };
+}
+
+function calculateTotal(totalPages, printMode) {
+  const rates = Object.hasOwn(RATES, printMode) ? RATES[printMode] : RATES["black-white"];
+  const standardCount = Math.min(totalPages, BULK_THRESHOLD);
+  const extraCount = Math.max(0, totalPages - BULK_THRESHOLD);
   return standardCount * rates.standard + extraCount * rates.bulk;
+}
+
+function currentAmount() {
+  return calculateTotal(getOrderSize().totalPages, getSelectedPrintMode()).toFixed(2);
 }
 
 function updatePriceSummary() {
   if (!priceTotalAmount) return;
-  const total = calculateTotal(copies.value, getSelectedPrintMode());
-  priceTotalAmount.textContent = `€${total.toFixed(2)}`;
+  const { copyCount, pageCount, totalPages } = getOrderSize();
+  priceTotalAmount.textContent = `€${currentAmount()} (${copyCount} × ${pageCount} = ${totalPages})`;
 }
 
 function updatePaymentPrompt() {
@@ -62,9 +87,7 @@ function updatePaymentPrompt() {
   paymentBox.hidden = !isValidEmail;
   if (!isValidEmail) return;
 
-  const total = calculateTotal(copies.value, getSelectedPrintMode());
-  const amount = total.toFixed(2);
-  paymentAmount.textContent = `€${amount}`;
+  paymentAmount.textContent = `€${currentAmount()}`;
   paymentLink.href = `https://revolut.me/${REVOLUT_TAG}`;
 }
 
@@ -137,6 +160,7 @@ function updateCopies(amount) {
 document.querySelector("#decrease").addEventListener("click", () => updateCopies(-1));
 document.querySelector("#increase").addEventListener("click", () => updateCopies(1));
 copies.addEventListener("input", refreshOrderSummary);
+if (pagesInput) pagesInput.addEventListener("input", refreshOrderSummary);
 emailInput.addEventListener("input", updatePaymentPrompt);
 emailInput.addEventListener("blur", updatePaymentPrompt);
 form.querySelectorAll('input[name="printMode"]').forEach((radio) => {
@@ -229,13 +253,17 @@ form.addEventListener("submit", async (event) => {
 
   try {
     const response = await fetch("/api/orders", { method: "POST", body: new FormData(form) });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || "Could not send your order.");
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const key = ERROR_KEYS[result.code];
+      throw new Error(key ? window.i18n.t(key) : result.error || window.i18n.t("errGeneric"));
+    }
 
-    message.textContent = `${result.message} Your order number is ${result.orderCode}.`;
+    message.textContent = window.i18n.t("orderSuccess").replace("{code}", result.orderCode);
     message.classList.add("success");
     form.reset();
     copies.value = MIN_ORDER;
+    if (pagesInput) pagesInput.value = 1;
     showFile(null);
     showPaymentProofFile(null);
     closePaymentProofModal();
@@ -243,7 +271,8 @@ form.addEventListener("submit", async (event) => {
     hasClickedPayLink = false;
     refreshOrderSummary();
   } catch (error) {
-    message.textContent = error.message;
+    // A TypeError here means the request itself failed (offline, connection dropped).
+    message.textContent = error instanceof TypeError ? window.i18n.t("errGeneric") : error.message;
     message.classList.add("error");
   } finally {
     submitButton.disabled = false;
