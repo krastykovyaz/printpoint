@@ -75,6 +75,10 @@ legend { padding: 0; margin: 0 0 12px; font: 500 13px "DM Mono", monospace; colo
 .stepper { height: 51px; border: 1px solid var(--line); display: grid; grid-template-columns: 50px 1fr 50px; align-items: stretch; }
 .stepper input { text-align: center; min-width: 0; border: 0; font: 500 17px "DM Mono", monospace; color: var(--ink); outline: none; appearance: textfield; -moz-appearance: textfield; }
 .stepper input::-webkit-outer-spin-button, .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.pages-label { display: block; margin: 14px 0 6px; color: var(--muted); font: 500 12px "DM Mono", monospace; }
+.pages-input { width: 100%; height: 44px; border: 1px solid var(--line); border-radius: 0; text-align: center; color: var(--ink); outline: none; font: 500 15px "DM Mono", monospace; }
+.pages-input:focus { border-color: var(--navy); box-shadow: 0 0 0 3px #e9eef5; }
+.privacy-note { margin: 10px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.5; }
 .stepper-button { border: 0; background: #f5f7f9; color: var(--navy); cursor: pointer; font-size: 20px; transition: background .15s; }
 .stepper-button:hover { background: #e9edf2; }
 .choice-grid { display: grid; grid-template-columns: 1.45fr .85fr; gap: 9px; }

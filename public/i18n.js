@@ -37,7 +37,14 @@ const translations = {
     paymentProofUploadNote: "PDF, JPG or PNG · max 10 MB",
     receiptPrompt: "Please pay via Revolut and attach your receipt, or click Send again to submit without it.",
     resumeRequired: "Please attach your resume (PDF, DOC, or DOCX) before sending.",
-    emailRequired: "Please enter your email address before sending."
+    emailRequired: "Please enter your email address before sending.",
+    pagesLabel: "Pages in your document",
+    privacyNote: "We use your file and contact details only to handle your order (via email and Telegram) and delete them automatically after 30 days.",
+    orderSuccess: "Your print request is on its way. Check your email for confirmation. Order number: {code}",
+    errFileType: "This file type isn't supported. Please check the allowed formats.",
+    errFileTooLarge: "Your file must be 10 MB or smaller.",
+    errTooMany: "Too many requests. Please try again in a few minutes.",
+    errGeneric: "Something went wrong and your order was not sent. Please try again."
   },
   zh: {
     langLabel: "选择语言",
@@ -77,7 +84,14 @@ const translations = {
     paymentProofUploadNote: "PDF、JPG 或 PNG · 最大 10 MB",
     receiptPrompt: "请先通过 Revolut 付款并附上收据，或再次点击发送以不附收据的方式提交。",
     resumeRequired: "发送前请附上您的简历（PDF、DOC 或 DOCX）。",
-    emailRequired: "发送前请填写您的电子邮箱地址。"
+    emailRequired: "发送前请填写您的电子邮箱地址。",
+    pagesLabel: "文档页数",
+    privacyNote: "您的文件和联系方式仅用于处理订单（通过电子邮件和 Telegram），30 天后自动删除。",
+    orderSuccess: "您的打印请求已提交，请查收确认邮件。订单号：{code}",
+    errFileType: "不支持此文件类型，请检查允许的格式。",
+    errFileTooLarge: "文件大小不能超过 10 MB。",
+    errTooMany: "请求过于频繁，请几分钟后再试。",
+    errGeneric: "出了点问题，订单未发送。请重试。"
   },
   hi: {
     langLabel: "भाषा चुनें",
@@ -117,7 +131,14 @@ const translations = {
     paymentProofUploadNote: "PDF, JPG या PNG · अधिकतम 10 MB",
     receiptPrompt: "कृपया Revolut से भुगतान करें और रसीद संलग्न करें, या बिना रसीद के भेजने के लिए फिर से भेजें पर क्लिक करें।",
     resumeRequired: "भेजने से पहले कृपया अपना रिज़्यूमे (PDF, DOC, या DOCX) अटैच करें।",
-    emailRequired: "भेजने से पहले कृपया अपना ईमेल पता दर्ज करें।"
+    emailRequired: "भेजने से पहले कृपया अपना ईमेल पता दर्ज करें।",
+    pagesLabel: "आपके दस्तावेज़ में पेज",
+    privacyNote: "आपकी फ़ाइल और संपर्क जानकारी का उपयोग केवल आपके ऑर्डर के लिए (ईमेल और Telegram के ज़रिए) किया जाता है और 30 दिन बाद अपने-आप हटा दी जाती है।",
+    orderSuccess: "आपका प्रिंट अनुरोध भेज दिया गया है। पुष्टि के लिए अपना ईमेल देखें। ऑर्डर नंबर: {code}",
+    errFileType: "यह फ़ाइल प्रकार समर्थित नहीं है। कृपया अनुमत फ़ॉर्मेट देखें।",
+    errFileTooLarge: "आपकी फ़ाइल 10 MB या उससे छोटी होनी चाहिए।",
+    errTooMany: "बहुत अधिक अनुरोध। कृपया कुछ मिनट बाद फिर कोशिश करें।",
+    errGeneric: "कुछ गड़बड़ हो गई और आपका ऑर्डर नहीं भेजा गया। कृपया फिर कोशिश करें।"
   },
   es: {
     langLabel: "Seleccionar idioma",
@@ -157,7 +178,14 @@ const translations = {
     paymentProofUploadNote: "PDF, JPG o PNG · máx. 10 MB",
     receiptPrompt: "Paga con Revolut y adjunta el recibo, o vuelve a pulsar Enviar para continuar sin él.",
     resumeRequired: "Adjunta tu currículum (PDF, DOC o DOCX) antes de enviar.",
-    emailRequired: "Introduce tu correo electrónico antes de enviar."
+    emailRequired: "Introduce tu correo electrónico antes de enviar.",
+    pagesLabel: "Páginas de tu documento",
+    privacyNote: "Usamos tu archivo y tus datos de contacto solo para gestionar tu pedido (por correo y Telegram) y los eliminamos automáticamente a los 30 días.",
+    orderSuccess: "Tu solicitud de impresión está en camino. Revisa tu correo para la confirmación. Número de pedido: {code}",
+    errFileType: "Este tipo de archivo no es compatible. Revisa los formatos permitidos.",
+    errFileTooLarge: "El archivo debe pesar 10 MB o menos.",
+    errTooMany: "Demasiadas solicitudes. Inténtalo de nuevo en unos minutos.",
+    errGeneric: "Algo salió mal y tu pedido no se envió. Inténtalo de nuevo."
   },
   fr: {
     langLabel: "Choisir la langue",
@@ -197,7 +225,14 @@ const translations = {
     paymentProofUploadNote: "PDF, JPG ou PNG · 10 Mo max",
     receiptPrompt: "Payez via Revolut et joignez votre reçu, ou cliquez à nouveau sur Envoyer pour continuer sans celui-ci.",
     resumeRequired: "Joignez votre CV (PDF, DOC ou DOCX) avant d’envoyer.",
-    emailRequired: "Indiquez votre adresse e-mail avant d’envoyer."
+    emailRequired: "Indiquez votre adresse e-mail avant d’envoyer.",
+    pagesLabel: "Pages de votre document",
+    privacyNote: "Nous utilisons votre fichier et vos coordonnées uniquement pour traiter votre commande (par e-mail et Telegram) et les supprimons automatiquement après 30 jours.",
+    orderSuccess: "Votre demande d’impression a bien été envoyée. Consultez vos e-mails pour la confirmation. Numéro de commande : {code}",
+    errFileType: "Ce type de fichier n’est pas pris en charge. Vérifiez les formats autorisés.",
+    errFileTooLarge: "Votre fichier doit faire 10 Mo maximum.",
+    errTooMany: "Trop de demandes. Réessayez dans quelques minutes.",
+    errGeneric: "Une erreur s’est produite et votre commande n’a pas été envoyée. Veuillez réessayer."
   },
   ar: {
     langLabel: "اختر اللغة",
@@ -237,7 +272,14 @@ const translations = {
     paymentProofUploadNote: "PDF أو JPG أو PNG · بحد أقصى 10 ميغابايت",
     receiptPrompt: "يرجى الدفع عبر Revolut وإرفاق الإيصال، أو اضغط على إرسال مرة أخرى للمتابعة بدونه.",
     resumeRequired: "يرجى إرفاق سيرتك الذاتية (PDF أو DOC أو DOCX) قبل الإرسال.",
-    emailRequired: "يرجى إدخال بريدك الإلكتروني قبل الإرسال."
+    emailRequired: "يرجى إدخال بريدك الإلكتروني قبل الإرسال.",
+    pagesLabel: "عدد صفحات المستند",
+    privacyNote: "نستخدم ملفك وبيانات الاتصال فقط لمعالجة طلبك (عبر البريد الإلكتروني وتيليغرام) ونحذفها تلقائيًا بعد 30 يومًا.",
+    orderSuccess: "تم إرسال طلب الطباعة. تحقق من بريدك الإلكتروني للتأكيد. رقم الطلب: {code}",
+    errFileType: "نوع الملف غير مدعوم. يرجى التحقق من الصيغ المسموح بها.",
+    errFileTooLarge: "يجب ألا يتجاوز حجم الملف 10 ميغابايت.",
+    errTooMany: "طلبات كثيرة جدًا. يرجى المحاولة مرة أخرى بعد بضع دقائق.",
+    errGeneric: "حدث خطأ ولم يُرسل طلبك. يرجى المحاولة مرة أخرى."
   },
   bn: {
     langLabel: "ভাষা নির্বাচন করুন",
@@ -277,7 +319,14 @@ const translations = {
     paymentProofUploadNote: "PDF, JPG বা PNG · সর্বোচ্চ 10 MB",
     receiptPrompt: "অনুগ্রহ করে Revolut-এ পেমেন্ট করুন এবং রসিদ সংযুক্ত করুন, অথবা রসিদ ছাড়া জমা দিতে আবার পাঠান-এ ক্লিক করুন।",
     resumeRequired: "পাঠানোর আগে অনুগ্রহ করে আপনার রিজিউমি (PDF, DOC, বা DOCX) সংযুক্ত করুন।",
-    emailRequired: "পাঠানোর আগে অনুগ্রহ করে আপনার ইমেইল ঠিকানা লিখুন।"
+    emailRequired: "পাঠানোর আগে অনুগ্রহ করে আপনার ইমেইল ঠিকানা লিখুন।",
+    pagesLabel: "আপনার ডকুমেন্টের পৃষ্ঠা সংখ্যা",
+    privacyNote: "আপনার ফাইল ও যোগাযোগের তথ্য শুধু অর্ডার সম্পন্ন করতে (ইমেইল ও Telegram-এর মাধ্যমে) ব্যবহার করা হয় এবং 30 দিন পর স্বয়ংক্রিয়ভাবে মুছে ফেলা হয়।",
+    orderSuccess: "আপনার প্রিন্ট অনুরোধ পাঠানো হয়েছে। নিশ্চিতকরণের জন্য ইমেইল দেখুন। অর্ডার নম্বর: {code}",
+    errFileType: "এই ধরনের ফাইল সমর্থিত নয়। অনুমোদিত ফরম্যাট দেখে নিন।",
+    errFileTooLarge: "ফাইলটি 10 MB বা তার কম হতে হবে।",
+    errTooMany: "অনেক বেশি অনুরোধ। কয়েক মিনিট পর আবার চেষ্টা করুন।",
+    errGeneric: "কিছু সমস্যা হয়েছে এবং আপনার অর্ডার পাঠানো হয়নি। আবার চেষ্টা করুন।"
   },
   pt: {
     langLabel: "Selecionar idioma",
@@ -317,7 +366,14 @@ const translations = {
     paymentProofUploadNote: "PDF, JPG ou PNG · máx. 10 MB",
     receiptPrompt: "Pague pelo Revolut e anexe o recibo, ou clique em Enviar novamente para continuar sem ele.",
     resumeRequired: "Anexe o seu currículo (PDF, DOC ou DOCX) antes de enviar.",
-    emailRequired: "Introduza o seu e-mail antes de enviar."
+    emailRequired: "Introduza o seu e-mail antes de enviar.",
+    pagesLabel: "Páginas do seu documento",
+    privacyNote: "Usamos o seu ficheiro e os seus contactos apenas para tratar o pedido (por e-mail e Telegram) e eliminamo-los automaticamente após 30 dias.",
+    orderSuccess: "O seu pedido de impressão foi enviado. Verifique o seu e-mail para a confirmação. Número do pedido: {code}",
+    errFileType: "Este tipo de ficheiro não é suportado. Verifique os formatos permitidos.",
+    errFileTooLarge: "O ficheiro deve ter 10 MB ou menos.",
+    errTooMany: "Demasiados pedidos. Tente novamente dentro de alguns minutos.",
+    errGeneric: "Algo correu mal e o seu pedido não foi enviado. Tente novamente."
   },
   ru: {
     langLabel: "Выбрать язык",
@@ -357,7 +413,14 @@ const translations = {
     paymentProofUploadNote: "PDF, JPG или PNG · макс. 10 МБ",
     receiptPrompt: "Пожалуйста, оплатите через Revolut и прикрепите чек, либо нажмите «Отправить» ещё раз, чтобы отправить без него.",
     resumeRequired: "Пожалуйста, прикрепите резюме (PDF, DOC или DOCX) перед отправкой.",
-    emailRequired: "Пожалуйста, укажите свой email перед отправкой."
+    emailRequired: "Пожалуйста, укажите свой email перед отправкой.",
+    pagesLabel: "Страниц в документе",
+    privacyNote: "Мы используем ваш файл и контактные данные только для выполнения заказа (через email и Telegram) и автоматически удаляем их через 30 дней.",
+    orderSuccess: "Ваш запрос на печать отправлен. Проверьте почту — мы выслали подтверждение. Номер заказа: {code}",
+    errFileType: "Этот тип файла не поддерживается. Проверьте допустимые форматы.",
+    errFileTooLarge: "Файл должен быть не больше 10 МБ.",
+    errTooMany: "Слишком много запросов. Попробуйте ещё раз через несколько минут.",
+    errGeneric: "Что-то пошло не так, заказ не отправлен. Попробуйте ещё раз."
   },
   ur: {
     langLabel: "زبان منتخب کریں",
@@ -397,7 +460,14 @@ const translations = {
     paymentProofUploadNote: "PDF، JPG یا PNG · زیادہ سے زیادہ 10 MB",
     receiptPrompt: "براہ کرم Revolut کے ذریعے ادائیگی کریں اور رسید منسلک کریں، یا بغیر رسید کے جمع کروانے کے لیے دوبارہ بھیجیں پر کلک کریں۔",
     resumeRequired: "بھیجنے سے پہلے براہ کرم اپنا ریزیومے (PDF, DOC, یا DOCX) منسلک کریں۔",
-    emailRequired: "بھیجنے سے پہلے براہ کرم اپنی ای میل ایڈریس درج کریں۔"
+    emailRequired: "بھیجنے سے پہلے براہ کرم اپنی ای میل ایڈریس درج کریں۔",
+    pagesLabel: "آپ کی دستاویز کے صفحات",
+    privacyNote: "آپ کی فائل اور رابطے کی معلومات صرف آپ کے آرڈر کے لیے (ای میل اور Telegram کے ذریعے) استعمال ہوتی ہیں اور 30 دن بعد خود بخود حذف کر دی جاتی ہیں۔",
+    orderSuccess: "آپ کی پرنٹ کی درخواست بھیج دی گئی ہے۔ تصدیق کے لیے اپنی ای میل دیکھیں۔ آرڈر نمبر: {code}",
+    errFileType: "یہ فائل قسم معاون نہیں ہے۔ براہ کرم اجازت شدہ فارمیٹس دیکھیں۔",
+    errFileTooLarge: "آپ کی فائل 10 MB یا اس سے چھوٹی ہونی چاہیے۔",
+    errTooMany: "بہت زیادہ درخواستیں۔ براہ کرم چند منٹ بعد دوبارہ کوشش کریں۔",
+    errGeneric: "کچھ غلط ہو گیا اور آپ کا آرڈر نہیں بھیجا گیا۔ براہ کرم دوبارہ کوشش کریں۔"
   },
   ja: {
     langLabel: "言語を選択",
@@ -437,7 +507,14 @@ const translations = {
     paymentProofUploadNote: "PDF、JPG、PNG · 最大10MB",
     receiptPrompt: "Revolutでお支払いのうえ領収書を添付してください。添付せずに送信する場合はもう一度「送信」を押してください。",
     resumeRequired: "送信前に履歴書（PDF、DOC、DOCX）を添付してください。",
-    emailRequired: "送信前にメールアドレスを入力してください。"
+    emailRequired: "送信前にメールアドレスを入力してください。",
+    pagesLabel: "書類のページ数",
+    privacyNote: "ファイルと連絡先はご注文の処理（メールとTelegram経由）にのみ使用し、30日後に自動的に削除します。",
+    orderSuccess: "印刷リクエストを受け付けました。確認メールをご確認ください。注文番号: {code}",
+    errFileType: "このファイル形式には対応していません。利用可能な形式をご確認ください。",
+    errFileTooLarge: "ファイルは10MB以下にしてください。",
+    errTooMany: "リクエストが多すぎます。数分後にもう一度お試しください。",
+    errGeneric: "問題が発生し、注文は送信されませんでした。もう一度お試しください。"
   }
 };
 
@@ -447,20 +524,20 @@ const STORAGE_KEY = "pp-lang";
 function detectDefaultLanguage() {
   try {
     const urlLang = new URLSearchParams(window.location.search).get("lang");
-    if (urlLang && translations[urlLang]) return urlLang;
+    if (urlLang && Object.hasOwn(translations, urlLang)) return urlLang;
   } catch (error) {
     // URL parsing unavailable — fall through to other detection methods.
   }
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved && translations[saved]) return saved;
+    if (saved && Object.hasOwn(translations, saved)) return saved;
   } catch (error) {
     // localStorage unavailable (private mode, etc.) — fall through to detection.
   }
   const browserLangs = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || "en"];
   for (const lang of browserLangs) {
     const code = lang.slice(0, 2).toLowerCase();
-    if (translations[code]) return code;
+    if (Object.hasOwn(translations, code)) return code;
   }
   return "en";
 }
@@ -472,7 +549,7 @@ function t(key) {
 }
 
 function applyLanguage(lang) {
-  currentLang = translations[lang] ? lang : "en";
+  currentLang = Object.hasOwn(translations, lang) ? lang : "en";
   document.documentElement.lang = currentLang;
   document.documentElement.dir = rtlLanguages.has(currentLang) ? "rtl" : "ltr";
   document.title = t("pageTitle");

@@ -1,11 +1,12 @@
 {
-  "name": "quickprint-resume-orders",
+  "name": "printpoint",
   "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "test": "DOTENV_CONFIG_PATH=/dev/null node --test test/*.test.js"
   },
   "dependencies": {
     "better-sqlite3": "^12.8.0",

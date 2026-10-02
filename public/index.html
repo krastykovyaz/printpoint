@@ -72,6 +72,8 @@
                 <input id="copies" name="copies" type="number" min="4" max="100" value="4" inputmode="numeric" required />
                 <button type="button" class="stepper-button" id="increase" aria-label="Increase copies" data-i18n-aria-label="increaseAria">+</button>
               </div>
+              <label class="pages-label" for="pages" data-i18n="pagesLabel">Pages in your document</label>
+              <input class="pages-input" id="pages" name="pages" type="number" min="1" max="50" value="1" inputmode="numeric" required />
             </fieldset>
 
             <fieldset class="form-group">
@@ -97,11 +99,11 @@
           <fieldset class="form-group email-group">
             <legend data-i18n="step4">4. Contact &amp; pickup details</legend>
             <label class="sr-only" for="email" data-i18n="emailLabel">Email address</label>
-            <input id="email" name="email" type="email" placeholder="you@example.com" autocomplete="email" required />
+            <input id="email" name="email" type="email" placeholder="you@example.com" autocomplete="email" maxlength="254" required />
             <p data-i18n="emailNote">We’ll email a confirmation to this address.</p>
 
             <label class="sr-only" for="phone" data-i18n="phoneLabel">Phone number (optional)</label>
-            <input id="phone" name="phone" type="tel" placeholder="+352 621 234 567" autocomplete="tel" />
+            <input id="phone" name="phone" type="tel" placeholder="+352 621 234 567" autocomplete="tel" maxlength="40" />
             <p data-i18n="phoneNote">Optional — we may call or message you when your order is ready.</p>
 
             <div class="payment-box" id="payment-box" hidden>
@@ -112,7 +114,7 @@
             </div>
 
             <label class="sr-only" for="location" data-i18n="locationLabel">Pickup or delivery location</label>
-            <input id="location" name="location" type="text" placeholder="e.g. Maison du Savoir reception, or a delivery address" />
+            <input id="location" name="location" type="text" placeholder="e.g. Maison du Savoir reception, or a delivery address" maxlength="300" />
             <p data-i18n="locationNote">Optional — tell us where to hand off your prints.</p>
             <button type="button" class="location-share-btn" id="share-location-btn">
               <span data-i18n="shareLocationButton">📍 Share my exact location</span>
@@ -138,6 +140,7 @@
             <span data-i18n="submit">Send print request</span><span aria-hidden="true">→</span>
           </button>
           <p class="form-message" id="form-message" aria-live="polite"></p>
+          <p class="privacy-note" data-i18n="privacyNote">We use your file and contact details only to handle your order (via email and Telegram) and delete them automatically after 30 days.</p>
         </form>
       </section>
     </main>
