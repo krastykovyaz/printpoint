@@ -1,0 +1,19 @@
+# Copy to /etc/systemd/system/, put the token in /etc/printpoint-agent.env (mode 600), then:
+#   systemctl enable --now printpoint-agent
+[Unit]
+Description=Print Point print agent
+After=network-online.target cups.service
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/printpoint-agent.env
+ExecStart=/usr/bin/node /opt/printpoint-agent/print-agent.js
+Restart=always
+RestartSec=10
+DynamicUser=yes
+Environment=HOME=/tmp
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

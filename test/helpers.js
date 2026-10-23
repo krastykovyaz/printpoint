@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import os from "node:os";
+import http from "node:http";
 import path from "node:path";
 
 // Must run before server.js is imported: keeps tests away from the real .env, database and uploads.
@@ -24,11 +25,11 @@ export function isolateEnvironment(overrides = {}) {
 }
 
 export async function startServer() {
-  const { app, db, runRetention } = await import("../server.js");
+  const { app, db, mailLog, runRetention } = await import("../server.js");
   const server = await new Promise((resolve) => {
     const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
   });
-  return { server, db, runRetention, base: `http://127.0.0.1:${server.address().port}` };
+  return { server, db, mailLog, runRetention, base: `http://127.0.0.1:${server.address().port}` };
 }
 
 export const PDF = new Blob(["%PDF-1.4 test resume"], { type: "application/pdf" });
@@ -49,4 +50,44 @@ export function orderForm(fields = {}, files = { resume: [PDF, "resume.pdf"] }) 
 export async function postOrder(base, form) {
   const response = await fetch(`${base}/api/orders`, { method: "POST", body: form });
   return { status: response.status, body: await response.json() };
+}
+
+// A stand-in for api.telegram.org that records every call (with its raw body) and numbers the messages it "sends".
+export async function startFakeTelegram() {
+  const calls = [];
+  let nextMessageId = 100;
+  const server = await new Promise((resolve) => {
+    const listener = http.createServer((req, res) => {
+      const chunks = [];
+      req.on("data", (chunk) => chunks.push(chunk));
+      req.on("end", () => {
+        const method = req.url.split("/").pop();
+        calls.push({ method, body: Buffer.concat(chunks).toString("utf8") });
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ ok: true, result: method === "sendDocument" ? { message_id: nextMessageId++ } : true }));
+      });
+    }).listen(0, "127.0.0.1", () => resolve(listener));
+  });
+  return {
+    server,
+    calls,
+    callsTo: (method) => calls.filter((call) => call.method === method),
+    url: `http://127.0.0.1:${server.address().port}`
+  };
+}
+
+export async function until(condition) {
+  for (let i = 0; i < 150; i += 1) {
+    if (condition()) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error("timed out waiting for the server");
+}
+
+export function postWebhook(base, update) {
+  return fetch(`${base}/api/telegram-webhook`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Telegram-Bot-Api-Secret-Token": "test-secret" },
+    body: JSON.stringify(update)
+  });
 }

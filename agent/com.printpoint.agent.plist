@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- macOS: edit the three CHANGE-ME values, copy to ~/Library/LaunchAgents/, then
+       launchctl load ~/Library/LaunchAgents/com.printpoint.agent.plist
+     Logs: /tmp/printpoint-agent.log -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.printpoint.agent</string>
+  <key>ProgramArguments</key>
+  <array>
+    <!-- `which node` gives this: /opt/homebrew/bin/node on Apple silicon, /usr/local/bin/node on Intel -->
+    <string>/opt/homebrew/bin/node</string>
+    <string>/Users/CHANGE-ME/printpoint-agent/print-agent.js</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PRINT_SERVER</key><string>https://print.unilu.space</string>
+    <key>PRINT_AGENT_TOKEN</key><string>CHANGE-ME</string>
+    <!-- the queue name from `lpstat -p` -->
+    <key>PRINTER</key><string>CHANGE-ME</string>
+    <!-- the HL-L2445DW is black-and-white only, so no colour option is needed -->
+    <key>LP_OPTIONS</key><string></string>
+    <key>SOFFICE_COMMAND</key><string>/Applications/LibreOffice.app/Contents/MacOS/soffice</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/tmp/printpoint-agent.log</string>
+  <key>StandardErrorPath</key><string>/tmp/printpoint-agent.log</string>
+</dict>
+</plist>

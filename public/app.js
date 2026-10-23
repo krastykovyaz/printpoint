@@ -36,8 +36,7 @@ const BULK_THRESHOLD = 10;
 const REVOLUT_TAG = "kovyaz";
 // Keep in sync with RATES_CENTS in server.js, which sets the price recorded on the order.
 const RATES = {
-  "black-white": { standard: 0.5, bulk: 0.3 },
-  color: { standard: 0.6, bulk: 0.4 }
+  "black-white": { standard: 0.5, bulk: 0.3 }
 };
 
 // Shown when the server reports one of these error codes; other errors use the server's text.
@@ -45,6 +44,7 @@ const ERROR_KEYS = {
   resume_required: "resumeRequired",
   email_invalid: "emailRequired",
   file_type: "errFileType",
+  mode_invalid: "errMode",
   file_too_large: "errFileTooLarge",
   too_many_requests: "errTooMany",
   delivery_failed: "errGeneric",

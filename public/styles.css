@@ -81,13 +81,12 @@ legend { padding: 0; margin: 0 0 12px; font: 500 13px "DM Mono", monospace; colo
 .privacy-note { margin: 10px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.5; }
 .stepper-button { border: 0; background: #f5f7f9; color: var(--navy); cursor: pointer; font-size: 20px; transition: background .15s; }
 .stepper-button:hover { background: #e9edf2; }
-.choice-grid { display: grid; grid-template-columns: 1.45fr .85fr; gap: 9px; }
+.choice-grid { display: grid; grid-template-columns: 1fr; gap: 9px; }
 .choice input { position: absolute; opacity: 0; }
 .choice > span { height: 51px; padding: 0 13px; border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; gap: 9px; font-size: 14px; cursor: pointer; white-space: nowrap; }
 .choice input:checked + span { background: var(--navy); color: white; border-color: var(--navy); }
-.bw-icon, .color-icon { width: 15px; height: 15px; display: inline-block; border-radius: 50%; border: 1px solid currentColor; }
+.bw-icon { width: 15px; height: 15px; display: inline-block; border-radius: 50%; border: 1px solid currentColor; }
 .bw-icon { background: linear-gradient(90deg, currentColor 50%, transparent 50%); }
-.color-icon { border: 0; background: conic-gradient(#f1c953, #e3735b, #719bd3, #9dc87e, #f1c953); }
 .price-summary { margin-bottom: 28px; padding: 14px 16px; background: #f5f7f9; border: 1px solid var(--line); }
 .price-summary .price-rates { margin: 0 0 8px; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .price-summary .price-total { margin: 0; font-size: 15px; color: var(--ink); }

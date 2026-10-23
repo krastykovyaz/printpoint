@@ -28,14 +28,17 @@ const MAX_PAGES = 50;
 const BULK_THRESHOLD = 10;
 // Keep in sync with RATES in public/app.js; the server value is the one recorded on the order.
 const RATES_CENTS = {
-  "black-white": { standard: 50, bulk: 30 },
-  color: { standard: 60, bulk: 40 }
+  "black-white": { standard: 50, bulk: 30 }
 };
 const MAX_PHONE_LENGTH = 40;
 const MAX_LOCATION_LENGTH = 300;
 const TELEGRAM_CAPTION_LIMIT = 1024;
 const PENDING_PHOTO_TTL_MINUTES = 30;
 const DELETED_MARK = "[deleted]";
+// With a print agent set up, the CV stays on the server only until it is printed, or this long if it never is.
+const PRINT_HOLD_HOURS = Number(process.env.PRINT_HOLD_HOURS) || 48;
+const PRINT_CLAIM_TIMEOUT_MINUTES = 10;
+const ORDER_CODE_PATTERN = /^QP-[0-9A-F]{6}$/;
 const EMAIL_PATTERN = /^[^\s@,;:<>()[\]"'\\]+@[^\s@,;:<>()[\]"'\\]+\.[^\s@,;:<>()[\]"'\\]{2,}$/;
 
 class UserError extends Error {
@@ -74,7 +77,10 @@ for (const [column, type] of [
   ["phone", "TEXT"],
   ["location", "TEXT"],
   ["pages", "INTEGER"],
-  ["price_cents", "INTEGER"]
+  ["price_cents", "INTEGER"],
+  ["telegram_messages", "TEXT"],
+  ["print_status", "TEXT"],
+  ["print_claimed_at", "TEXT"]
 ]) {
   if (!orderColumns.includes(column)) {
     db.exec(`ALTER TABLE orders ADD COLUMN ${column} ${type}`);
@@ -111,9 +117,7 @@ function formatPrice(cents) {
   return `€${(cents / 100).toFixed(2)}`;
 }
 
-function formatMode(mode) {
-  return mode === "color" ? "Color" : "Black & white";
-}
+const PRINT_MODE_LABEL = "Black & white";
 
 // Fixed-window counter kept in memory; entries expire with their window and the map is capped.
 function createRateLimiter({ windowMs, max }) {
@@ -219,9 +223,21 @@ function isConfigured() {
   );
 }
 
+// Filled only by the test transport, so tests can inspect what would have been emailed.
+const mailLog = [];
+
 function makeTransporter() {
   const override = process.env.MAIL_TRANSPORT;
-  if (override === "json") return nodemailer.createTransport({ jsonTransport: true });
+  if (override === "json") {
+    const transport = nodemailer.createTransport({ jsonTransport: true });
+    const sendMail = transport.sendMail.bind(transport);
+    transport.sendMail = async (mail) => {
+      const info = await sendMail(mail);
+      mailLog.push(JSON.parse(info.message));
+      return info;
+    };
+    return transport;
+  }
   if (override) return nodemailer.createTransport(override);
   return nodemailer.createTransport({
     service: "gmail",
@@ -236,12 +252,17 @@ function mailFrom() {
   return `"${shopName}" <${process.env.GMAIL_USER}>`;
 }
 
+function printAgentEnabled() {
+  return Boolean(process.env.PRINT_AGENT_TOKEN);
+}
+
 function isTelegramConfigured() {
   return Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID);
 }
 
 async function telegramApi(method, body) {
-  const url = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/${method}`;
+  const base = process.env.TELEGRAM_API_BASE || "https://api.telegram.org";
+  const url = `${base}/bot${process.env.TELEGRAM_BOT_TOKEN}/${method}`;
   const options = body instanceof FormData
     ? { method: "POST", body }
     : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
@@ -261,7 +282,8 @@ async function sendTelegramDocument({ filePath, filename, caption, replyMarkup }
   if (replyMarkup) {
     form.append("reply_markup", JSON.stringify(replyMarkup));
   }
-  await telegramApi("sendDocument", form);
+  const message = await telegramApi("sendDocument", form);
+  return message.message_id;
 }
 
 async function notifyAdmin(text) {
@@ -384,9 +406,31 @@ function findOrderContact(orderCode) {
   const order = db.prepare("SELECT customer_email FROM orders WHERE order_code = ?").get(orderCode);
   if (!order) return { error: "Order not found." };
   if (order.customer_email === DELETED_MARK) {
-    return { error: `Customer data was deleted (older than ${retentionDays} days).` };
+    return { error: "Customer data has already been deleted." };
   }
   return { email: order.customer_email };
+}
+
+// Once an order is printed and the customer told, nothing about it should remain:
+// the Telegram copies are deleted and the contact details are blanked.
+async function purgeOrder(orderCode) {
+  const row = db.prepare("SELECT telegram_messages, stored_name FROM orders WHERE order_code = ?").get(orderCode);
+  if (row?.stored_name) fs.rmSync(path.join(uploadDir, row.stored_name), { force: true });
+  let telegramDeleted = true;
+  for (const messageId of JSON.parse(row?.telegram_messages || "[]")) {
+    try {
+      await telegramApi("deleteMessage", { chat_id: process.env.TELEGRAM_CHAT_ID, message_id: messageId });
+    } catch (error) {
+      telegramDeleted = false;
+      console.error(`Order ${orderCode}: could not delete Telegram message ${messageId}:`, error.message);
+    }
+  }
+  db.prepare(`
+    UPDATE orders
+    SET customer_email = ?, phone = NULL, location = NULL, original_name = ?, telegram_messages = NULL
+    WHERE order_code = ?
+  `).run(DELETED_MARK, DELETED_MARK, orderCode);
+  return { telegramDeleted };
 }
 
 function setPendingPhotoRequest(chatId, orderCode) {
@@ -420,15 +464,56 @@ async function completeReadyRequest(chatId, photo) {
   try {
     const photoBuffer = photo ? await downloadTelegramFile(photo.file_id) : null;
     await sendReadyEmail(contact.email, orderCode, photoBuffer);
-    await notifyAdmin(`✅ Client notified: Order ready ${orderCode}${photo ? " (with pickup photo)" : ""}`);
+    const { telegramDeleted } = await purgeOrder(orderCode);
+    await notifyAdmin(
+      `✅ Client notified: Order ready ${orderCode}${photo ? " (with pickup photo)" : ""}\n` +
+      (telegramDeleted
+        ? `🗑 The CV, receipt and customer details for this order have been deleted.`
+        : `⚠️ Customer details are deleted, but Telegram would not delete the order message — remove it from this chat by hand.`)
+    );
   } catch (error) {
     console.error("Could not send ready email:", error);
     await notifyAdmin(`Failed to send the "ready" email for ${orderCode} — tap "Order ready" again to retry.`);
   }
 }
 
+// Confirming in Telegram is what releases a job to the printer.
+async function handlePrintButton(callbackQuery, orderCode) {
+  if (!printAgentEnabled()) {
+    await answerTelegramCallback(callbackQuery.id, "No printer is connected to the server.");
+    return;
+  }
+  const order = db.prepare("SELECT stored_name, print_status, customer_email FROM orders WHERE order_code = ?").get(orderCode);
+  if (!order) {
+    await answerTelegramCallback(callbackQuery.id, "Order not found.");
+    return;
+  }
+  if (order.customer_email === DELETED_MARK) {
+    await answerTelegramCallback(callbackQuery.id, "This order has already been completed and deleted.");
+    return;
+  }
+  if (order.print_status === "queued" || order.print_status === "printing") {
+    await answerTelegramCallback(callbackQuery.id, "Already in the print queue.");
+    return;
+  }
+  if (order.print_status === "printed") {
+    await answerTelegramCallback(callbackQuery.id, "Already printed.");
+    return;
+  }
+  if (!fs.existsSync(path.join(uploadDir, order.stored_name))) {
+    await answerTelegramCallback(callbackQuery.id, `The file is no longer on the server (kept ${PRINT_HOLD_HOURS} hours). Print it from this chat by hand.`);
+    return;
+  }
+  db.prepare("UPDATE orders SET print_status = 'queued', print_claimed_at = NULL WHERE order_code = ?").run(orderCode);
+  await answerTelegramCallback(callbackQuery.id, "🖨 Queued — it prints in a moment.");
+}
+
 async function handleStatusButton(callbackQuery, chatId) {
   const [action, orderCode] = String(callbackQuery.data || "").split(":");
+  if (action === "print" && ORDER_CODE_PATTERN.test(orderCode || "")) {
+    await handlePrintButton(callbackQuery, orderCode);
+    return;
+  }
   if (!Object.hasOwn(ORDER_STATUSES, action) || !orderCode) return;
   const status = ORDER_STATUSES[action];
 
@@ -526,13 +611,15 @@ function runRetention() {
       if (row.payment_proof_name) referenced.add(row.payment_proof_name);
     }
     const orphanCutoffMs = Date.now() - 24 * 60 * 60 * 1000;
+    const holdCutoffMs = Date.now() - PRINT_HOLD_HOURS * 60 * 60 * 1000;
     for (const name of fs.readdirSync(uploadDir)) {
       const filePath = path.join(uploadDir, name);
       const stats = fs.statSync(filePath);
       if (!stats.isFile()) continue;
       const expired = stats.mtimeMs < cutoffMs;
       const orphaned = !referenced.has(name) && stats.mtimeMs < orphanCutoffMs;
-      if (expired || orphaned) fs.rmSync(filePath, { force: true });
+      const heldTooLong = printAgentEnabled() && stats.mtimeMs < holdCutoffMs;
+      if (expired || orphaned || heldTooLong) fs.rmSync(filePath, { force: true });
     }
 
     db.prepare("DELETE FROM pending_photo_requests WHERE created_at < datetime('now', '-1 day')").run();
@@ -569,17 +656,17 @@ app.post("/api/track-visit", (req, res) => {
 });
 
 const OG_TRANSLATIONS = {
-  en: { title: "Print Point — Resume printing", description: "Attach your resume, choose copies & color, pay, and get it printed.", locale: "en_US" },
-  zh: { title: "Print Point — 简历打印", description: "上传简历，选择份数与颜色，付款后即可完成打印。", locale: "zh_CN" },
-  hi: { title: "Print Point — रिज़्यूमे प्रिंटिंग", description: "अपना रिज़्यूमे अटैच करें, प्रतियाँ और रंग चुनें, भुगतान करें और प्रिंट करवाएँ।", locale: "hi_IN" },
-  es: { title: "Print Point — Impresión de currículums", description: "Adjunta tu currículum, elige copias y color, paga y recíbelo impreso.", locale: "es_ES" },
-  fr: { title: "Print Point — Impression de CV", description: "Joignez votre CV, choisissez le nombre de copies et la couleur, payez, et faites-le imprimer.", locale: "fr_FR" },
-  ar: { title: "Print Point — طباعة السيرة الذاتية", description: "أرفق سيرتك الذاتية، اختر عدد النسخ واللون، ادفع، واحصل على طباعتها.", locale: "ar_AR" },
-  bn: { title: "Print Point — রিজিউমি প্রিন্টিং", description: "আপনার রিজিউমি সংযুক্ত করুন, কপি ও রং নির্বাচন করুন, পেমেন্ট করুন এবং প্রিন্ট করিয়ে নিন।", locale: "bn_BD" },
-  pt: { title: "Print Point — Impressão de currículos", description: "Anexe o seu currículo, escolha cópias e cor, pague e receba-o impresso.", locale: "pt_PT" },
-  ru: { title: "Print Point — Печать резюме", description: "Прикрепите резюме, выберите количество копий и цвет, оплатите и получите распечатку.", locale: "ru_RU" },
-  ur: { title: "Print Point — ریزیومے پرنٹنگ", description: "اپنا ریزیومے منسلک کریں، کاپیوں کی تعداد اور رنگ منتخب کریں، ادائیگی کریں اور پرنٹ کروائیں۔", locale: "ur_PK" },
-  ja: { title: "Print Point — 履歴書印刷", description: "履歴書を添付し、部数と色を選んでお支払いいただくと印刷いたします。", locale: "ja_JP" }
+  en: { title: "Print Point — Resume printing", description: "Attach your resume, choose copies, pay, and get it printed.", locale: "en_US" },
+  zh: { title: "Print Point — 简历打印", description: "上传简历，选择份数，付款后即可完成打印。", locale: "zh_CN" },
+  hi: { title: "Print Point — रिज़्यूमे प्रिंटिंग", description: "अपना रिज़्यूमे अटैच करें, प्रतियाँ चुनें, भुगतान करें और प्रिंट करवाएँ।", locale: "hi_IN" },
+  es: { title: "Print Point — Impresión de currículums", description: "Adjunta tu currículum, elige las copias, paga y recíbelo impreso.", locale: "es_ES" },
+  fr: { title: "Print Point — Impression de CV", description: "Joignez votre CV, choisissez le nombre de copies, payez, et faites-le imprimer.", locale: "fr_FR" },
+  ar: { title: "Print Point — طباعة السيرة الذاتية", description: "أرفق سيرتك الذاتية، اختر عدد النسخ، ادفع، واحصل على طباعتها.", locale: "ar_AR" },
+  bn: { title: "Print Point — রিজিউমি প্রিন্টিং", description: "আপনার রিজিউমি সংযুক্ত করুন, কপির সংখ্যা নির্বাচন করুন, পেমেন্ট করুন এবং প্রিন্ট করিয়ে নিন।", locale: "bn_BD" },
+  pt: { title: "Print Point — Impressão de currículos", description: "Anexe o seu currículo, escolha as cópias, pague e receba-o impresso.", locale: "pt_PT" },
+  ru: { title: "Print Point — Печать резюме", description: "Прикрепите резюме, выберите количество копий, оплатите и получите распечатку.", locale: "ru_RU" },
+  ur: { title: "Print Point — ریزیومے پرنٹنگ", description: "اپنا ریزیومے منسلک کریں، کاپیوں کی تعداد منتخب کریں، ادائیگی کریں اور پرنٹ کروائیں۔", locale: "ur_PK" },
+  ja: { title: "Print Point — 履歴書印刷", description: "履歴書を添付し、部数を選んでお支払いいただくと印刷いたします。", locale: "ja_JP" }
 };
 
 function escapeHtmlAttr(value) {
@@ -609,7 +696,7 @@ app.get("/", (req, res) => {
     .replace('<html lang="en">', `<html lang="${lang}">`)
     .replace("<title>Print Point — Resume printing</title>", `<title>${title}</title>`)
     .replaceAll('content="Print Point — Resume printing"', `content="${title}"`)
-    .replace(/content="Attach your resume, choose copies & color, pay, and get it printed\."/g, `content="${description}"`)
+    .replace(/content="Attach your resume, choose copies, pay, and get it printed\."/g, `content="${description}"`)
     .replace('property="og:url" content="https://print.unilu.space/"', `property="og:url" content="https://print.unilu.space/${canonicalSuffix}"`)
     .replace("</head>", `    <meta property="og:locale" content="${og.locale}" />\n  </head>`);
 
@@ -646,7 +733,7 @@ function validateOrder(body, resumeFile, paymentProofFile) {
     throw new UserError("pages_invalid", `Enter between 1 and ${MAX_PAGES} pages.`);
   }
   if (!Object.hasOwn(RATES_CENTS, printMode)) {
-    throw new UserError("mode_invalid", "Choose black & white or color printing.");
+    throw new UserError("mode_invalid", "Only black & white printing is available right now.");
   }
 
   const totalPages = copies * pages;
@@ -684,10 +771,32 @@ function saveOrder(order) {
 }
 
 function describeOrder(order) {
-  return `${order.copies} copies × ${order.pages} page(s) = ${order.totalPages} pages · ${formatMode(order.printMode)} · ${formatPrice(order.priceCents)}`;
+  return `${order.copies} copies × ${order.pages} page(s) = ${order.totalPages} pages · ${PRINT_MODE_LABEL} · ${formatPrice(order.priceCents)}`;
 }
 
-async function sendShopEmail(order, resumeFile, paymentProofFile) {
+async function sendShopEmail(order, resumeFile, paymentProofFile, { summaryOnly = false } = {}) {
+  const subject = paymentProofFile
+    ? `New print order ${order.orderCode}`
+    : `[NO PAYMENT YET] New print order ${order.orderCode}`;
+
+  // The CV and the customer's details live in Telegram and are deleted from there once printed;
+  // the inbox only gets a notice, so nothing personal piles up in the mailbox.
+  if (summaryOnly) {
+    await makeTransporter().sendMail({
+      from: mailFrom(),
+      to: process.env.PRINT_SHOP_EMAIL,
+      subject,
+      text: [
+        `New print order: ${order.orderCode}`,
+        `Printing: ${describeOrder(order)}`,
+        paymentProofFile ? `Payment proof: received` : `Payment proof: ⚠️ NOT ATTACHED — customer submitted without paying yet`,
+        ``,
+        `The CV and the customer's details are in Telegram only, and are deleted when you mark the order ready.`
+      ].join("\n")
+    });
+    return;
+  }
+
   const attachments = [{ filename: order.originalName, path: resumeFile.path }];
   if (paymentProofFile) {
     attachments.push({ filename: decodeFilename(paymentProofFile.originalname), path: paymentProofFile.path });
@@ -696,9 +805,7 @@ async function sendShopEmail(order, resumeFile, paymentProofFile) {
     from: mailFrom(),
     to: process.env.PRINT_SHOP_EMAIL,
     replyTo: order.customerEmail,
-    subject: paymentProofFile
-      ? `New print order ${order.orderCode}`
-      : `[NO PAYMENT YET] New print order ${order.orderCode}`,
+    subject,
     text: [
       `New print order: ${order.orderCode}`,
       `Customer email: ${order.customerEmail}`,
@@ -715,7 +822,8 @@ async function sendShopEmail(order, resumeFile, paymentProofFile) {
 }
 
 async function sendOrderToTelegram(order, resumeFile, paymentProofFile) {
-  await sendTelegramDocument({
+  const messageIds = [];
+  messageIds.push(await sendTelegramDocument({
     filePath: resumeFile.path,
     filename: order.originalName,
     caption: [
@@ -728,6 +836,7 @@ async function sendOrderToTelegram(order, resumeFile, paymentProofFile) {
     ].join("\n"),
     replyMarkup: {
       inline_keyboard: [
+        ...(printAgentEnabled() ? [[{ text: "🖨 Print on printer", callback_data: `print:${order.orderCode}` }]] : []),
         [
           { text: "🖨 Printing", callback_data: `printing:${order.orderCode}` },
           { text: "🚚 Delivery", callback_data: `delivery:${order.orderCode}` }
@@ -735,18 +844,19 @@ async function sendOrderToTelegram(order, resumeFile, paymentProofFile) {
         [{ text: "✅ Order ready", callback_data: `ready:${order.orderCode}` }]
       ]
     }
-  });
+  }));
   if (paymentProofFile) {
     try {
-      await sendTelegramDocument({
+      messageIds.push(await sendTelegramDocument({
         filePath: paymentProofFile.path,
         filename: decodeFilename(paymentProofFile.originalname),
         caption: `Payment proof for order ${order.orderCode}`
-      });
+      }));
     } catch (error) {
       console.error("Could not send payment proof to Telegram:", error.message);
     }
   }
+  return messageIds;
 }
 
 async function sendCustomerConfirmation(order) {
@@ -764,22 +874,31 @@ async function sendCustomerConfirmation(order) {
 }
 
 // The order counts as received once the shop has it through at least one channel.
+// Telegram carries the files; email is a plain notice unless Telegram could not be used.
 async function notifyShop(order, resumeFile, paymentProofFile) {
-  const channels = [sendShopEmail(order, resumeFile, paymentProofFile)];
-  if (isTelegramConfigured()) channels.push(sendOrderToTelegram(order, resumeFile, paymentProofFile));
-
-  const results = await Promise.allSettled(channels);
-  results.forEach((result, index) => {
-    if (result.status === "rejected") {
-      console.error(`Order ${order.orderCode}: ${index === 0 ? "shop email" : "Telegram"} failed:`, result.reason?.message || result.reason);
+  let telegramMessages = null;
+  if (isTelegramConfigured()) {
+    try {
+      telegramMessages = await sendOrderToTelegram(order, resumeFile, paymentProofFile);
+      db.prepare("UPDATE orders SET telegram_messages = ? WHERE order_code = ?")
+        .run(JSON.stringify(telegramMessages), order.orderCode);
+    } catch (error) {
+      console.error(`Order ${order.orderCode}: Telegram failed:`, error.message);
     }
-  });
-
-  const [emailResult, telegramResult] = results;
-  if (emailResult.status === "rejected" && telegramResult?.status === "fulfilled") {
-    await notifyAdmin(`⚠️ The email copy of order ${order.orderCode} could not be sent — this Telegram message is the only notification.`);
   }
-  return results.some((result) => result.status === "fulfilled");
+
+  let emailSent = false;
+  try {
+    await sendShopEmail(order, resumeFile, paymentProofFile, { summaryOnly: telegramMessages !== null });
+    emailSent = true;
+  } catch (error) {
+    console.error(`Order ${order.orderCode}: shop email failed:`, error.message);
+  }
+
+  if (telegramMessages !== null && !emailSent) {
+    await notifyAdmin(`⚠️ The email notice for order ${order.orderCode} could not be sent — this Telegram message is the only notification.`);
+  }
+  return telegramMessages !== null || emailSent;
 }
 
 const orderUpload = upload.fields([{ name: "resume", maxCount: 1 }, { name: "paymentProof", maxCount: 1 }]);
@@ -787,8 +906,8 @@ const orderUpload = upload.fields([{ name: "resume", maxCount: 1 }, { name: "pay
 app.post("/api/orders", orderRateLimit, orderUpload, async (req, res, next) => {
   const resumeFile = req.files?.resume?.[0];
   const paymentProofFile = req.files?.paymentProof?.[0];
-  const removeUploads = () => {
-    for (const file of [resumeFile, paymentProofFile]) {
+  const removeUploads = ({ keepResume = false } = {}) => {
+    for (const file of [keepResume ? null : resumeFile, paymentProofFile]) {
       if (file) fs.rmSync(file.path, { force: true });
     }
   };
@@ -814,6 +933,10 @@ app.post("/api/orders", orderRateLimit, orderUpload, async (req, res, next) => {
     return;
   }
 
+  // The shop has the files now (Telegram or email). The server keeps no copy, except the CV
+  // while it waits for the print button when a printer is connected.
+  removeUploads({ keepResume: printAgentEnabled() && isTelegramConfigured() });
+
   sendCustomerConfirmation(order).catch((error) => {
     console.error(`Order ${order.orderCode}: customer confirmation failed:`, error.message);
   });
@@ -824,6 +947,87 @@ app.post("/api/orders", orderRateLimit, orderUpload, async (req, res, next) => {
     price: formatPrice(order.priceCents),
     message: "Your print request is on its way. Check your email for confirmation."
   });
+});
+
+function isAuthorizedAgent(req) {
+  const token = process.env.PRINT_AGENT_TOKEN;
+  if (!token) return false;
+  const match = /^Bearer (.+)$/.exec(req.get("Authorization") || "");
+  if (!match) return false;
+  const received = Buffer.from(match[1]);
+  const expected = Buffer.from(token);
+  return received.length === expected.length && crypto.timingSafeEqual(received, expected);
+}
+
+function requireAgent(req, res, next) {
+  if (!isAuthorizedAgent(req)) {
+    res.status(401).json({ error: "Unauthorized.", code: "unauthorized" });
+    return;
+  }
+  res.set("Cache-Control", "no-store");
+  next();
+}
+
+// The printer's computer asks for work. A job is handed out only after the Print button was tapped.
+app.get("/api/agent/next", requireAgent, async (_req, res) => {
+  db.prepare(`
+    UPDATE orders SET print_status = 'queued'
+    WHERE print_status = 'printing' AND print_claimed_at < ?
+  `).run(sqlTimestamp(new Date(Date.now() - PRINT_CLAIM_TIMEOUT_MINUTES * 60 * 1000)));
+
+  for (;;) {
+    const job = db.prepare(`
+      SELECT order_code, stored_name, original_name, copies FROM orders
+      WHERE print_status = 'queued' ORDER BY id LIMIT 1
+    `).get();
+    if (!job) {
+      res.sendStatus(204);
+      return;
+    }
+    if (!fs.existsSync(path.join(uploadDir, job.stored_name))) {
+      db.prepare("UPDATE orders SET print_status = 'failed' WHERE order_code = ?").run(job.order_code);
+      await notifyAdmin(`⚠️ ${job.order_code} could not be printed: the file is no longer on the server. Print it from this chat by hand.`);
+      continue;
+    }
+    db.prepare("UPDATE orders SET print_status = 'printing', print_claimed_at = ? WHERE order_code = ?")
+      .run(sqlTimestamp(new Date()), job.order_code);
+    res.json({
+      orderCode: job.order_code,
+      copies: job.copies,
+      extension: path.extname(job.stored_name).toLowerCase()
+    });
+    return;
+  }
+});
+
+function findClaimedJob(req, res) {
+  const orderCode = req.params.orderCode;
+  const job = ORDER_CODE_PATTERN.test(orderCode)
+    ? db.prepare("SELECT order_code, stored_name FROM orders WHERE order_code = ? AND print_status = 'printing'").get(orderCode)
+    : null;
+  if (!job) res.status(404).json({ error: "No such job.", code: "job_not_found" });
+  return job;
+}
+
+app.get("/api/agent/jobs/:orderCode/file", requireAgent, (req, res) => {
+  const job = findClaimedJob(req, res);
+  if (!job) return;
+  res.type("application/octet-stream").sendFile(path.join(uploadDir, job.stored_name));
+});
+
+app.post("/api/agent/jobs/:orderCode/done", requireAgent, express.json({ limit: "10kb" }), async (req, res) => {
+  const job = findClaimedJob(req, res);
+  if (!job) return;
+  if (req.body?.ok === true) {
+    fs.rmSync(path.join(uploadDir, job.stored_name), { force: true });
+    db.prepare("UPDATE orders SET print_status = 'printed' WHERE order_code = ?").run(job.order_code);
+    await notifyAdmin(`🖨 Sent to the printer: ${job.order_code}. Tap "Order ready" once the customer has it.`);
+  } else {
+    const reason = String(req.body?.error || "unknown error").slice(0, 200);
+    db.prepare("UPDATE orders SET print_status = 'failed' WHERE order_code = ?").run(job.order_code);
+    await notifyAdmin(`⚠️ Printing ${job.order_code} failed: ${reason}\nTap "Print on printer" to try again.`);
+  }
+  res.sendStatus(204);
 });
 
 app.post("/api/telegram-webhook", express.json({ limit: "100kb" }), (req, res) => {
@@ -857,7 +1061,7 @@ app.use((error, _req, res, _next) => {
   res.status(500).json({ error: "Something went wrong. Please try again.", code: "server_error" });
 });
 
-export { app, db, priceCents, runRetention };
+export { app, db, mailLog, priceCents, runRetention };
 
 // PM2 loads the script through its own wrapper, so argv[1] is not this file there.
 const entryCandidates = [process.argv[1], process.env.pm_exec_path].filter(Boolean);

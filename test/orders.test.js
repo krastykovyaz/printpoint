@@ -15,7 +15,7 @@ after(() => ctx.server.close());
 const uploads = () => fs.readdirSync(process.env.UPLOAD_DIR);
 const orderCount = () => ctx.db.prepare("SELECT COUNT(*) AS n FROM orders").get().n;
 
-test("accepts a valid order, stores it and prices it on the server", async () => {
+test("accepts a valid order, prices it on the server and keeps no copy of the files", async () => {
   const { status, body } = await postOrder(ctx.base, orderForm({}, { resume: [PDF, "resume.pdf"], paymentProof: [PNG, "receipt.png"] }));
   assert.equal(status, 201);
   assert.match(body.orderCode, /^QP-[0-9A-F]{6}$/);
@@ -24,15 +24,22 @@ test("accepts a valid order, stores it and prices it on the server", async () =>
   const row = ctx.db.prepare("SELECT * FROM orders WHERE order_code = ?").get(body.orderCode);
   assert.equal(row.customer_email, "customer@example.test");
   assert.equal(row.price_cents, 200);
-  assert.ok(uploads().includes(row.stored_name));
-  assert.ok(uploads().includes(row.payment_proof_name));
+  assert.deepEqual(uploads(), []);
 });
 
-test("prices copies × pages with the discount only past 10 pages", async () => {
-  const { status, body } = await postOrder(ctx.base, orderForm({ copies: "4", pages: "3", printMode: "color" }));
+test("with Telegram off, the email carries the files so the shop can still print", async () => {
+  ctx.mailLog.length = 0;
+  const { status } = await postOrder(ctx.base, orderForm({}, { resume: [PDF, "resume.pdf"] }));
+  assert.equal(status, 201);
+  const shopMail = ctx.mailLog.find((mail) => mail.to?.[0]?.address === "shop@example.test");
+  assert.equal(shopMail.attachments.length, 1);
+});
+
+test("prices copies × pages with the discount only past 10 pages (12 pages = 10 × €0.50 + 2 × €0.30)", async () => {
+  const { status, body } = await postOrder(ctx.base, orderForm({ copies: "4", pages: "3" }));
   assert.equal(status, 201);
   assert.equal(body.totalPages, 12);
-  assert.equal(body.price, "€6.80");
+  assert.equal(body.price, "€5.60");
 });
 
 test("rejects invalid input with a stable error code and leaves no files behind", async (t) => {
@@ -45,6 +52,7 @@ test("rejects invalid input with a stable error code and leaves no files behind"
     ["fractional copies", orderForm({ copies: "4.5" }), "copies_invalid"],
     ["zero pages", orderForm({ pages: "0" }), "pages_invalid"],
     ["unknown print mode", orderForm({ printMode: "constructor" }), "mode_invalid"],
+    ["colour is not offered", orderForm({ printMode: "color" }), "mode_invalid"],
     ["over-long location", orderForm({ location: "A".repeat(301) }), "field_too_long"],
     ["wrong extension", orderForm({}, { resume: [new Blob(["text"]), "note.txt"] }), "file_type"],
     ["script renamed to .pdf", orderForm({}, { resume: [new Blob(["<script>alert(1)</script>"]), "evil.pdf"] }), "file_type"],
@@ -135,7 +143,7 @@ test("retention anonymises old orders and deletes their files", async () => {
   }
   ctx.db.prepare(`
     INSERT INTO orders (order_code, customer_email, phone, location, copies, print_mode, original_name, stored_name, created_at)
-    VALUES ('QP-OLD001', 'old@example.test', '+352 1', 'somewhere', 4, 'color', 'cv.pdf', ?, datetime('now', '-40 days'))
+    VALUES ('QP-OLD001', 'old@example.test', '+352 1', 'somewhere', 4, 'black-white', 'cv.pdf', ?, datetime('now', '-40 days'))
   `).run(oldFile);
   const recent = (await postOrder(ctx.base, orderForm())).body.orderCode;
 
@@ -150,5 +158,4 @@ test("retention anonymises old orders and deletes their files", async () => {
 
   const kept = ctx.db.prepare("SELECT * FROM orders WHERE order_code = ?").get(recent);
   assert.equal(kept.customer_email, "customer@example.test");
-  assert.ok(uploads().includes(kept.stored_name));
 });
