@@ -17,6 +17,9 @@ export function configFromEnv(env = process.env) {
     printer: env.PRINTER || "",
     lpCommand: env.LP_COMMAND || "lp",
     sofficeCommand: env.SOFFICE_COMMAND || "soffice",
+    lpstatCommand: env.LPSTAT_COMMAND || "lpstat",
+    ipptoolCommand: env.IPPTOOL_COMMAND || "ipptool",
+    statusSeconds: env.STATUS_SECONDS === undefined ? 60 : Number(env.STATUS_SECONDS),
     lpOptions: (env.LP_OPTIONS ?? "-o print-color-mode=monochrome").split(/\s+/).filter(Boolean),
     pollSeconds: Number(env.POLL_SECONDS) || 5
   };
@@ -29,6 +32,47 @@ async function api(config, pathname, options = {}) {
   });
   if (response.status === 401) throw new Error("The server rejected the agent token.");
   return response;
+}
+
+// Asks CUPS (which asks the printer) for toner, paper and state. Returns null when the printer cannot be read.
+export async function readPrinterStatus(config) {
+  if (!config.printer) return null;
+  try {
+    // The queue lists every size CUPS supports; the printer itself says what is in the tray.
+    const device = (await run(config.lpstatCommand, ["-v", config.printer]).catch(() => ({ stdout: "" }))).stdout.match(/ (ipps?:\/\/\S+)/);
+    const { stdout } = await run(
+      config.ipptoolCommand,
+      ["-tv", device?.[1] || `ipp://localhost/printers/${encodeURIComponent(config.printer)}`, "get-printer-attributes.test"],
+      { timeout: 20_000 }
+    );
+    const values = (key) => {
+      const line = stdout.split("\n").find((text) => text.trim().startsWith(`${key} (`));
+      return line ? line.slice(line.indexOf("=") + 1).trim().split(",") : [];
+    };
+    const names = values("marker-names");
+    const levels = values("marker-levels");
+    const lows = values("marker-low-levels");
+    return {
+      printer: config.printer,
+      state: ({ 3: "idle", 4: "printing", 5: "stopped" })[values("printer-state")[0]] || values("printer-state")[0] || "unknown",
+      reasons: values("printer-state-reasons").filter((reason) => reason && reason !== "none").join(", "),
+      alert: values("printer-alert-description")[0] || "",
+      markers: names.map((name, index) => ({ name, level: Number(levels[index]), low: lows[index] === undefined ? null : Number(lows[index]) })),
+      media: values("media-ready").map((size) => size.replace(/^iso_|^na_/, "").replace(/_.*/, "").toUpperCase())
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function reportStatus(config) {
+  const status = await readPrinterStatus(config);
+  if (!status) return;
+  await api(config, "/api/agent/status", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(status)
+  });
 }
 
 async function toPdf(config, file, dir) {
@@ -82,8 +126,13 @@ async function main() {
     process.exit(1);
   }
   console.log(`Print agent watching ${config.server}${config.printer ? ` for printer ${config.printer}` : ""}`);
+  let lastStatus = 0;
   for (;;) {
     let outcome = "idle";
+    if (config.statusSeconds > 0 && Date.now() - lastStatus >= config.statusSeconds * 1000) {
+      lastStatus = Date.now();
+      await reportStatus(config).catch((error) => console.error(`Status report failed: ${error.message}`));
+    }
     try {
       outcome = await runOnce(config);
       if (outcome !== "idle") console.log(`Job ${outcome}.`);

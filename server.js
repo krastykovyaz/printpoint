@@ -38,6 +38,9 @@ const DELETED_MARK = "[deleted]";
 // With a print agent set up, the CV stays on the server only until it is printed, or this long if it never is.
 const PRINT_HOLD_HOURS = Number(process.env.PRINT_HOLD_HOURS) || 48;
 const PRINT_CLAIM_TIMEOUT_MINUTES = 10;
+// The agent reports the printer's state now and then; it is only kept in memory and is stale after this long.
+const PRINTER_STATUS_STALE_MINUTES = 3;
+let printerStatus = null;
 const ORDER_CODE_PATTERN = /^QP-[0-9A-F]{6}$/;
 const EMAIL_PATTERN = /^[^\s@,;:<>()[\]"'\\]+@[^\s@,;:<>()[\]"'\\]+\.[^\s@,;:<>()[\]"'\\]{2,}$/;
 
@@ -322,6 +325,7 @@ async function registerTelegramWebhook() {
     });
     await telegramApi("setMyCommands", {
       commands: [
+        { command: "printer", description: "Show printer toner, paper and queue" },
         { command: "stats", description: "Show website visits vs orders" },
         { command: "skip", description: "Send the 'ready' email without a photo" }
       ]
@@ -572,6 +576,10 @@ async function handleTelegramUpdate(update) {
     await completeReadyRequest(chatId, null);
     return;
   }
+  if (command === "/printer") {
+    await notifyAdmin(describePrinter());
+    return;
+  }
   if (command === "/stats") {
     const stats = getVisitStats();
     const line = (label, { visits, orders }) =>
@@ -585,6 +593,39 @@ async function handleTelegramUpdate(update) {
       ].join("\n")
     );
   }
+}
+
+function describePrinter() {
+  const counts = Object.fromEntries(
+    db.prepare("SELECT print_status AS status, COUNT(*) AS n FROM orders WHERE print_status IS NOT NULL GROUP BY print_status").all()
+      .map((row) => [row.status, row.n])
+  );
+  const queue = `Queue: ${counts.queued || 0} waiting, ${counts.printing || 0} printing, ${counts.failed || 0} failed`;
+  if (!printerStatus) return ["🖨 Printer", "The print agent has not reported yet.", queue].join("\n");
+
+  const ageMinutes = Math.floor((Date.now() - printerStatus.receivedAt) / 60000);
+  const stale = ageMinutes >= PRINTER_STATUS_STALE_MINUTES;
+  const lines = [
+    `🖨 Printer ${printerStatus.printer || ""}`.trim(),
+    stale ? `⚠️ Agent silent for ${ageMinutes} min — values below may be out of date.` : "Agent: online",
+    `State: ${printerStatus.state}${printerStatus.reasons ? ` (${printerStatus.reasons})` : ""}`
+  ];
+  if (printerStatus.alert) lines.push(`Alert: ${printerStatus.alert}`);
+  for (const marker of printerStatus.markers) {
+    const low = marker.low !== null && marker.level !== null && marker.level <= marker.low ? " ⚠️ low" : "";
+    lines.push(`${marker.name}: ${marker.level === null ? "unknown" : `${marker.level}%`}${low}`);
+  }
+  if (printerStatus.media.length) lines.push(`Paper loaded: ${printerStatus.media.join(", ")}`);
+  lines.push(queue);
+  return lines.join("\n");
+}
+
+function cleanText(value, max = 80) {
+  return typeof value === "string" ? value.replace(/[\u0000-\u001f]/g, " ").trim().slice(0, max) : "";
+}
+
+function cleanPercent(value) {
+  return Number.isFinite(value) && value >= 0 && value <= 100 ? Math.round(value) : null;
 }
 
 function isAuthorizedWebhook(req) {
@@ -1030,7 +1071,25 @@ app.post("/api/agent/jobs/:orderCode/done", requireAgent, express.json({ limit: 
   res.sendStatus(204);
 });
 
-app.post("/api/telegram-webhook", express.json({ limit: "100kb" }), (req, res) => {
+app.post("/api/agent/status", requireAgent, express.json({ limit: "10kb" }), (req, res) => {
+  const body = req.body || {};
+  printerStatus = {
+    receivedAt: Date.now(),
+    printer: cleanText(body.printer, 40),
+    state: cleanText(body.state, 20) || "unknown",
+    reasons: cleanText(body.reasons, 80),
+    alert: cleanText(body.alert, 80),
+    markers: (Array.isArray(body.markers) ? body.markers : []).slice(0, 8).map((marker) => ({
+      name: cleanText(marker?.name, 20) || "Toner",
+      level: cleanPercent(marker?.level),
+      low: cleanPercent(marker?.low)
+    })),
+    media: (Array.isArray(body.media) ? body.media : []).slice(0, 6).map((size) => cleanText(size, 30)).filter(Boolean)
+  };
+  res.sendStatus(204);
+});
+
+app.post("/api/telegram-webhook",express.json({ limit: "100kb" }), (req, res) => {
   res.sendStatus(200);
   if (!isAuthorizedWebhook(req)) return;
   handleTelegramUpdate(req.body).catch((error) => {
