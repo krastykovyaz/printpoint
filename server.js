@@ -8,6 +8,7 @@ import express from "express";
 import multer from "multer";
 import nodemailer from "nodemailer";
 import { downloadPdf, LinkError } from "./lib/fetch-pdf.js";
+import { createPaperTray } from "./paper-tray.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -108,6 +109,9 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
 `);
+
+// Alert when the sheets left drop below this share of what was loaded.
+const paperTray = createPaperTray(db, Number(process.env.PAPER_ALERT_PERCENT) || 90);
 
 function sqlTimestamp(date) {
   return date.toISOString().slice(0, 19).replace("T", " ");
@@ -615,6 +619,11 @@ async function handleTelegramUpdate(update) {
     await notifyAdmin(describePrinter());
     return;
   }
+  const paperCommand = /^\/paper(?:\s+(\S+))?$/.exec(command);
+  if (paperCommand) {
+    await notifyAdmin(handlePaperCommand(paperCommand[1]));
+    return;
+  }
   if (command === "/stats") {
     const stats = getVisitStats();
     const line = (label, { visits, orders }) =>
@@ -636,7 +645,7 @@ function describePrinter() {
       .map((row) => [row.status, row.n])
   );
   const queue = `Queue: ${counts.queued || 0} waiting, ${counts.printing || 0} printing, ${counts.failed || 0} failed`;
-  if (!printerStatus) return ["🖨 Printer", "The print agent has not reported yet.", queue].join("\n");
+  if (!printerStatus) return ["🖨 Printer", "The print agent has not reported yet.", describePaper(), queue].join("\n");
 
   const ageMinutes = Math.floor((Date.now() - printerStatus.receivedAt) / 60000);
   const stale = ageMinutes >= PRINTER_STATUS_STALE_MINUTES;
@@ -651,8 +660,22 @@ function describePrinter() {
     lines.push(`${marker.name}: ${marker.level === null ? "unknown" : `${marker.level}%`}${low}`);
   }
   if (printerStatus.media.length) lines.push(`Paper loaded: ${printerStatus.media.join(", ")}`);
-  lines.push(queue);
+  lines.push(describePaper(), queue);
   return lines.join("\n");
+}
+
+function describePaper() {
+  const paper = paperTray.status();
+  if (!paper) return "Paper: not counted yet. Send /paper <sheets> after loading the tray.";
+  return `Paper left: ~${paper.remaining} of ${paper.loaded} sheets (${paper.percent}%)`;
+}
+
+function handlePaperCommand(argument) {
+  if (argument === undefined) return `📄 ${describePaper()}`;
+  const sheets = Number(argument);
+  if (!/^\d+$/.test(argument) || sheets < 1 || sheets > 5000) return "Send /paper followed by the number of sheets you loaded, for example /paper 250.";
+  paperTray.load(sheets);
+  return `📄 Counting from ${sheets} sheets. I'll warn you when fewer than ${Number(process.env.PAPER_ALERT_PERCENT) || 90}% are left.`;
 }
 
 function cleanText(value, max = 80) {
@@ -1122,6 +1145,10 @@ app.post("/api/agent/jobs/:orderCode/done", requireAgent, express.json({ limit: 
     fs.rmSync(path.join(uploadDir, job.stored_name), { force: true });
     db.prepare("UPDATE orders SET print_status = 'printed' WHERE order_code = ?").run(job.order_code);
     await notifyAdmin(`🖨 Sent to the printer: ${job.order_code}. Tap "Order ready" once the customer has it.`);
+    const used = db.prepare("SELECT copies, pages FROM orders WHERE order_code = ?").get(job.order_code);
+    const paperAlert = paperTray.use(used.copies * (used.pages || 1));
+    if (paperAlert === "empty") await notifyAdmin("📄 The tray should be empty now. Load paper and send /paper <sheets>.");
+    else if (paperAlert) await notifyAdmin(`📄 ${describePaper()}. Time to think about refilling.`);
   } else {
     const reason = String(req.body?.error || "unknown error").slice(0, 200);
     db.prepare("UPDATE orders SET print_status = 'failed' WHERE order_code = ?").run(job.order_code);
