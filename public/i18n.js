@@ -27,7 +27,7 @@ const translations = {
     sending: "Sending request…",
     footerTagline: "Simple prints. Serious opportunities.",
     attachedPrefix: "Attached:",
-    priceRatesNote: "Black & white: €0.50/page, €0.30/additional page after 10. Minimum order: 4 pages.",
+    priceRatesNote: "Black & white: €0.50/page, €0.30/additional page after 10. Minimum order: {min} pages.",
     totalLabel: "Total service",
     payInstruction: "Pay via Revolut before submitting, then use your email as the payment note so we can match it to your order.",
     payButton: "Pay on Revolut",
@@ -44,7 +44,16 @@ const translations = {
     errFileTooLarge: "Your file must be 10 MB or smaller.",
     errTooMany: "Too many requests. Please try again in a few minutes.",
     errGeneric: "Something went wrong and your order was not sent. Please try again.",
-    errMode: "Only black & white printing is available right now."
+    errMode: "Only black & white printing is available right now.",
+    linkLabel: "Or paste a direct link to a PDF",
+    linkCheck: "Check",
+    linkChecking: "Checking…",
+    linkOk: "Link works: {name}",
+    errLinkInvalid: "Enter a full https:// link to a PDF file.",
+    errLinkUnreachable: "We couldn't open that link. Make sure it is public and try again.",
+    errLinkNotPdf: "That link isn't a direct link to a PDF file. Share links from Drive or Dropbox open a web page, not the file.",
+    errLinkTooLarge: "The PDF at that link is larger than 10 MB.",
+    errLinkBusy: "Too many links are being checked right now. Please try again in a moment."
   },
   zh: {
     langLabel: "选择语言",
@@ -74,7 +83,7 @@ const translations = {
     sending: "正在发送请求…",
     footerTagline: "简单打印，成就机会。",
     attachedPrefix: "已附加：",
-    priceRatesNote: "黑白：€0.50/页，超过10页后每页 €0.30。最低起订：4页。",
+    priceRatesNote: "黑白：€0.50/页，超过10页后每页 €0.30。最低起订：{min}页。",
     totalLabel: "服务总计",
     payInstruction: "提交前请通过 Revolut 支付，并将您的邮箱填写为付款备注，以便我们核对订单。",
     payButton: "通过 Revolut 支付",
@@ -91,7 +100,16 @@ const translations = {
     errFileTooLarge: "文件大小不能超过 10 MB。",
     errTooMany: "请求过于频繁，请几分钟后再试。",
     errGeneric: "出了点问题，订单未发送。请重试。",
-    errMode: "目前仅提供黑白打印。"
+    errMode: "目前仅提供黑白打印。",
+    linkLabel: "或粘贴 PDF 的直接链接",
+    linkCheck: "检查",
+    linkChecking: "检查中…",
+    linkOk: "链接可用：{name}",
+    errLinkInvalid: "请输入指向 PDF 文件的完整 https:// 链接。",
+    errLinkUnreachable: "无法打开该链接。请确认链接是公开的，然后重试。",
+    errLinkNotPdf: "该链接不是 PDF 文件的直接链接。Drive 或 Dropbox 的分享链接打开的是网页，而不是文件。",
+    errLinkTooLarge: "该链接中的 PDF 超过 10 MB。",
+    errLinkBusy: "目前检查的链接过多，请稍后再试。"
   },
   hi: {
     langLabel: "भाषा चुनें",
@@ -121,7 +139,7 @@ const translations = {
     sending: "अनुरोध भेजा जा रहा है…",
     footerTagline: "सरल प्रिंट। गंभीर अवसर।",
     attachedPrefix: "संलग्न:",
-    priceRatesNote: "श्वेत-श्याम: €0.50/पेज, 10 के बाद प्रत्येक अतिरिक्त पेज €0.30। न्यूनतम ऑर्डर: 4 पेज।",
+    priceRatesNote: "श्वेत-श्याम: €0.50/पेज, 10 के बाद प्रत्येक अतिरिक्त पेज €0.30। न्यूनतम ऑर्डर: {min} पेज।",
     totalLabel: "कुल सेवा",
     payInstruction: "सबमिट करने से पहले Revolut के ज़रिए भुगतान करें, और अपने ऑर्डर से मिलान के लिए भुगतान नोट में अपना ईमेल लिखें।",
     payButton: "Revolut पर भुगतान करें",
@@ -138,7 +156,16 @@ const translations = {
     errFileTooLarge: "आपकी फ़ाइल 10 MB या उससे छोटी होनी चाहिए।",
     errTooMany: "बहुत अधिक अनुरोध। कृपया कुछ मिनट बाद फिर कोशिश करें।",
     errGeneric: "कुछ गड़बड़ हो गई और आपका ऑर्डर नहीं भेजा गया। कृपया फिर कोशिश करें।",
-    errMode: "अभी केवल श्वेत-श्याम प्रिंटिंग उपलब्ध है।"
+    errMode: "अभी केवल श्वेत-श्याम प्रिंटिंग उपलब्ध है।",
+    linkLabel: "या PDF का सीधा लिंक पेस्ट करें",
+    linkCheck: "जाँचें",
+    linkChecking: "जाँच हो रही है…",
+    linkOk: "लिंक काम करता है: {name}",
+    errLinkInvalid: "PDF फ़ाइल का पूरा https:// लिंक दर्ज करें।",
+    errLinkUnreachable: "यह लिंक नहीं खुल सका। सुनिश्चित करें कि यह सार्वजनिक है और फिर कोशिश करें।",
+    errLinkNotPdf: "यह लिंक PDF फ़ाइल का सीधा लिंक नहीं है। Drive या Dropbox के शेयर लिंक वेब पेज खोलते हैं, फ़ाइल नहीं।",
+    errLinkTooLarge: "इस लिंक की PDF 10 MB से बड़ी है।",
+    errLinkBusy: "अभी बहुत सारे लिंक जाँचे जा रहे हैं। कृपया थोड़ी देर बाद कोशिश करें।"
   },
   es: {
     langLabel: "Seleccionar idioma",
@@ -168,7 +195,7 @@ const translations = {
     sending: "Enviando solicitud…",
     footerTagline: "Impresiones simples. Oportunidades serias.",
     attachedPrefix: "Adjunto:",
-    priceRatesNote: "Blanco y negro: 0,50 €/página, 0,30 €/página adicional después de 10. Pedido mínimo: 4 páginas.",
+    priceRatesNote: "Blanco y negro: 0,50 €/página, 0,30 €/página adicional después de 10. Pedido mínimo: {min} páginas.",
     totalLabel: "Total del servicio",
     payInstruction: "Paga con Revolut antes de enviar el pedido y usa tu correo como referencia de pago para poder identificarlo.",
     payButton: "Pagar con Revolut",
@@ -185,7 +212,16 @@ const translations = {
     errFileTooLarge: "El archivo debe pesar 10 MB o menos.",
     errTooMany: "Demasiadas solicitudes. Inténtalo de nuevo en unos minutos.",
     errGeneric: "Algo salió mal y tu pedido no se envió. Inténtalo de nuevo.",
-    errMode: "Por ahora solo está disponible la impresión en blanco y negro."
+    errMode: "Por ahora solo está disponible la impresión en blanco y negro.",
+    linkLabel: "O pega un enlace directo a un PDF",
+    linkCheck: "Comprobar",
+    linkChecking: "Comprobando…",
+    linkOk: "El enlace funciona: {name}",
+    errLinkInvalid: "Introduce un enlace https:// completo a un archivo PDF.",
+    errLinkUnreachable: "No pudimos abrir ese enlace. Comprueba que sea público e inténtalo de nuevo.",
+    errLinkNotPdf: "Ese enlace no lleva directamente a un PDF. Los enlaces compartidos de Drive o Dropbox abren una página web, no el archivo.",
+    errLinkTooLarge: "El PDF de ese enlace supera los 10 MB.",
+    errLinkBusy: "Se están comprobando demasiados enlaces ahora mismo. Inténtalo de nuevo en un momento."
   },
   fr: {
     langLabel: "Choisir la langue",
@@ -215,7 +251,7 @@ const translations = {
     sending: "Envoi de la demande…",
     footerTagline: "Impressions simples. Opportunités sérieuses.",
     attachedPrefix: "Joint :",
-    priceRatesNote: "Noir et blanc : 0,50 €/page, 0,30 €/page supplémentaire après 10. Commande minimale : 4 pages.",
+    priceRatesNote: "Noir et blanc : 0,50 €/page, 0,30 €/page supplémentaire après 10. Commande minimale : {min} pages.",
     totalLabel: "Total du service",
     payInstruction: "Payez via Revolut avant d’envoyer votre commande, et indiquez votre e-mail comme référence de paiement pour que nous puissions la retrouver.",
     payButton: "Payer sur Revolut",
@@ -232,7 +268,16 @@ const translations = {
     errFileTooLarge: "Votre fichier doit faire 10 Mo maximum.",
     errTooMany: "Trop de demandes. Réessayez dans quelques minutes.",
     errGeneric: "Une erreur s’est produite et votre commande n’a pas été envoyée. Veuillez réessayer.",
-    errMode: "Seule l'impression en noir et blanc est disponible pour le moment."
+    errMode: "Seule l'impression en noir et blanc est disponible pour le moment.",
+    linkLabel: "Ou collez un lien direct vers un PDF",
+    linkCheck: "Vérifier",
+    linkChecking: "Vérification…",
+    linkOk: "Le lien fonctionne : {name}",
+    errLinkInvalid: "Saisissez un lien https:// complet vers un fichier PDF.",
+    errLinkUnreachable: "Impossible d’ouvrir ce lien. Vérifiez qu’il est public et réessayez.",
+    errLinkNotPdf: "Ce lien ne mène pas directement à un PDF. Les liens de partage Drive ou Dropbox ouvrent une page web, pas le fichier.",
+    errLinkTooLarge: "Le PDF de ce lien dépasse 10 Mo.",
+    errLinkBusy: "Trop de liens sont vérifiés en ce moment. Réessayez dans un instant."
   },
   ar: {
     langLabel: "اختر اللغة",
@@ -262,7 +307,7 @@ const translations = {
     sending: "جارٍ إرسال الطلب…",
     footerTagline: "طباعة بسيطة. فرص جادة.",
     attachedPrefix: "مرفق:",
-    priceRatesNote: "أبيض وأسود: 0.50 € للصفحة، 0.30 € لكل صفحة إضافية بعد 10. الحد الأدنى للطلب: 4 صفحات.",
+    priceRatesNote: "أبيض وأسود: 0.50 € للصفحة، 0.30 € لكل صفحة إضافية بعد 10. الحد الأدنى للطلب: {min} صفحات.",
     totalLabel: "إجمالي الخدمة",
     payInstruction: "ادفع عبر Revolut قبل الإرسال، واستخدم بريدك الإلكتروني كملاحظة للدفع حتى نتمكن من مطابقته بطلبك.",
     payButton: "الدفع عبر Revolut",
@@ -279,7 +324,16 @@ const translations = {
     errFileTooLarge: "يجب ألا يتجاوز حجم الملف 10 ميغابايت.",
     errTooMany: "طلبات كثيرة جدًا. يرجى المحاولة مرة أخرى بعد بضع دقائق.",
     errGeneric: "حدث خطأ ولم يُرسل طلبك. يرجى المحاولة مرة أخرى.",
-    errMode: "الطباعة بالأبيض والأسود فقط متاحة حاليًا."
+    errMode: "الطباعة بالأبيض والأسود فقط متاحة حاليًا.",
+    linkLabel: "أو الصق رابطًا مباشرًا لملف PDF",
+    linkCheck: "تحقق",
+    linkChecking: "جارٍ التحقق…",
+    linkOk: "الرابط يعمل: {name}",
+    errLinkInvalid: "أدخل رابط https:// كاملًا لملف PDF.",
+    errLinkUnreachable: "تعذّر فتح هذا الرابط. تأكد من أنه عام وحاول مرة أخرى.",
+    errLinkNotPdf: "هذا الرابط ليس رابطًا مباشرًا لملف PDF. روابط المشاركة من Drive أو Dropbox تفتح صفحة ويب وليس الملف.",
+    errLinkTooLarge: "ملف PDF في هذا الرابط أكبر من 10 ميغابايت.",
+    errLinkBusy: "يتم التحقق من عدد كبير من الروابط الآن. حاول مرة أخرى بعد قليل."
   },
   bn: {
     langLabel: "ভাষা নির্বাচন করুন",
@@ -309,7 +363,7 @@ const translations = {
     sending: "অনুরোধ পাঠানো হচ্ছে…",
     footerTagline: "সহজ প্রিন্ট। গুরুত্বপূর্ণ সুযোগ।",
     attachedPrefix: "সংযুক্ত:",
-    priceRatesNote: "সাদা-কালো: প্রতি পৃষ্ঠা €0.50, 10-এর পরে প্রতিটি অতিরিক্ত পৃষ্ঠা €0.30। সর্বনিম্ন অর্ডার: 4 পৃষ্ঠা।",
+    priceRatesNote: "সাদা-কালো: প্রতি পৃষ্ঠা €0.50, 10-এর পরে প্রতিটি অতিরিক্ত পৃষ্ঠা €0.30। সর্বনিম্ন অর্ডার: {min} পৃষ্ঠা।",
     totalLabel: "মোট সেবা",
     payInstruction: "জমা দেওয়ার আগে Revolut-এর মাধ্যমে পেমেন্ট করুন এবং আপনার অর্ডারের সাথে মেলানোর জন্য পেমেন্ট নোটে আপনার ইমেইল ব্যবহার করুন।",
     payButton: "Revolut-এ পেমেন্ট করুন",
@@ -326,7 +380,16 @@ const translations = {
     errFileTooLarge: "ফাইলটি 10 MB বা তার কম হতে হবে।",
     errTooMany: "অনেক বেশি অনুরোধ। কয়েক মিনিট পর আবার চেষ্টা করুন।",
     errGeneric: "কিছু সমস্যা হয়েছে এবং আপনার অর্ডার পাঠানো হয়নি। আবার চেষ্টা করুন।",
-    errMode: "এই মুহূর্তে শুধু সাদা-কালো প্রিন্ট পাওয়া যাচ্ছে।"
+    errMode: "এই মুহূর্তে শুধু সাদা-কালো প্রিন্ট পাওয়া যাচ্ছে।",
+    linkLabel: "অথবা PDF-এর সরাসরি লিংক পেস্ট করুন",
+    linkCheck: "যাচাই করুন",
+    linkChecking: "যাচাই হচ্ছে…",
+    linkOk: "লিংক কাজ করছে: {name}",
+    errLinkInvalid: "PDF ফাইলের পূর্ণ https:// লিংক দিন।",
+    errLinkUnreachable: "লিংকটি খোলা যায়নি। এটি পাবলিক কি না দেখে আবার চেষ্টা করুন।",
+    errLinkNotPdf: "এই লিংকটি PDF ফাইলের সরাসরি লিংক নয়। Drive বা Dropbox-এর শেয়ার লিংক ওয়েব পেজ খোলে, ফাইল নয়।",
+    errLinkTooLarge: "এই লিংকের PDF 10 MB-এর বেশি বড়।",
+    errLinkBusy: "এখন অনেক লিংক যাচাই হচ্ছে। একটু পরে আবার চেষ্টা করুন।"
   },
   pt: {
     langLabel: "Selecionar idioma",
@@ -356,7 +419,7 @@ const translations = {
     sending: "Enviando pedido…",
     footerTagline: "Impressões simples. Oportunidades sérias.",
     attachedPrefix: "Anexado:",
-    priceRatesNote: "Preto e branco: 0,50 €/página, 0,30 €/página adicional após 10. Pedido mínimo: 4 páginas.",
+    priceRatesNote: "Preto e branco: 0,50 €/página, 0,30 €/página adicional após 10. Pedido mínimo: {min} páginas.",
     totalLabel: "Total do serviço",
     payInstruction: "Pague pelo Revolut antes de enviar o pedido e use o seu e-mail como referência de pagamento para podermos identificá-lo.",
     payButton: "Pagar no Revolut",
@@ -373,7 +436,16 @@ const translations = {
     errFileTooLarge: "O ficheiro deve ter 10 MB ou menos.",
     errTooMany: "Demasiados pedidos. Tente novamente dentro de alguns minutos.",
     errGeneric: "Algo correu mal e o seu pedido não foi enviado. Tente novamente.",
-    errMode: "De momento só está disponível a impressão a preto e branco."
+    errMode: "De momento só está disponível a impressão a preto e branco.",
+    linkLabel: "Ou cole um link direto para um PDF",
+    linkCheck: "Verificar",
+    linkChecking: "A verificar…",
+    linkOk: "O link funciona: {name}",
+    errLinkInvalid: "Introduza um link https:// completo para um ficheiro PDF.",
+    errLinkUnreachable: "Não foi possível abrir esse link. Confirme que é público e tente novamente.",
+    errLinkNotPdf: "Esse link não é um link direto para um PDF. Os links de partilha do Drive ou Dropbox abrem uma página web, não o ficheiro.",
+    errLinkTooLarge: "O PDF nesse link tem mais de 10 MB.",
+    errLinkBusy: "Estão a ser verificados demasiados links neste momento. Tente novamente daqui a pouco."
   },
   ru: {
     langLabel: "Выбрать язык",
@@ -403,7 +475,7 @@ const translations = {
     sending: "Отправка запроса…",
     footerTagline: "Простая печать. Серьёзные возможности.",
     attachedPrefix: "Прикреплено:",
-    priceRatesNote: "Чёрно-белая: 0,50 €/страница, 0,30 €/доп. страница после 10. Минимальный заказ: 4 страницы.",
+    priceRatesNote: "Чёрно-белая: 0,50 €/страница, 0,30 €/доп. страница после 10. Минимальный заказ: {min} страницы.",
     totalLabel: "Итого за услугу",
     payInstruction: "Оплатите через Revolut перед отправкой заказа и укажите свой email в комментарии к платежу, чтобы мы могли его сопоставить с заказом.",
     payButton: "Оплатить через Revolut",
@@ -420,7 +492,16 @@ const translations = {
     errFileTooLarge: "Файл должен быть не больше 10 МБ.",
     errTooMany: "Слишком много запросов. Попробуйте ещё раз через несколько минут.",
     errGeneric: "Что-то пошло не так, заказ не отправлен. Попробуйте ещё раз.",
-    errMode: "Сейчас доступна только чёрно-белая печать."
+    errMode: "Сейчас доступна только чёрно-белая печать.",
+    linkLabel: "Или вставьте прямую ссылку на PDF",
+    linkCheck: "Проверить",
+    linkChecking: "Проверяем…",
+    linkOk: "Ссылка работает: {name}",
+    errLinkInvalid: "Введите полную ссылку https:// на PDF-файл.",
+    errLinkUnreachable: "Не удалось открыть ссылку. Убедитесь, что она общедоступна, и попробуйте снова.",
+    errLinkNotPdf: "Эта ссылка не ведёт напрямую на PDF. Ссылки для доступа из Drive или Dropbox открывают веб-страницу, а не файл.",
+    errLinkTooLarge: "PDF по этой ссылке больше 10 МБ.",
+    errLinkBusy: "Сейчас проверяется слишком много ссылок. Попробуйте чуть позже."
   },
   ur: {
     langLabel: "زبان منتخب کریں",
@@ -450,7 +531,7 @@ const translations = {
     sending: "درخواست بھیجی جا رہی ہے…",
     footerTagline: "آسان پرنٹس۔ سنجیدہ مواقع۔",
     attachedPrefix: "منسلک:",
-    priceRatesNote: "سیاہ و سفید: 0.50 € فی صفحہ، 10 کے بعد ہر اضافی صفحہ 0.30 €۔ کم از کم آرڈر: 4 صفحات۔",
+    priceRatesNote: "سیاہ و سفید: 0.50 € فی صفحہ، 10 کے بعد ہر اضافی صفحہ 0.30 €۔ کم از کم آرڈر: {min} صفحات۔",
     totalLabel: "کل سروس",
     payInstruction: "جمع کروانے سے پہلے Revolut کے ذریعے ادائیگی کریں اور اپنے آرڈر سے ملانے کے لیے ادائیگی کے نوٹ میں اپنی ای میل استعمال کریں۔",
     payButton: "Revolut پر ادائیگی کریں",
@@ -467,7 +548,16 @@ const translations = {
     errFileTooLarge: "آپ کی فائل 10 MB یا اس سے چھوٹی ہونی چاہیے۔",
     errTooMany: "بہت زیادہ درخواستیں۔ براہ کرم چند منٹ بعد دوبارہ کوشش کریں۔",
     errGeneric: "کچھ غلط ہو گیا اور آپ کا آرڈر نہیں بھیجا گیا۔ براہ کرم دوبارہ کوشش کریں۔",
-    errMode: "فی الحال صرف سیاہ و سفید پرنٹنگ دستیاب ہے۔"
+    errMode: "فی الحال صرف سیاہ و سفید پرنٹنگ دستیاب ہے۔",
+    linkLabel: "یا PDF کا براہِ راست لنک پیسٹ کریں",
+    linkCheck: "جانچیں",
+    linkChecking: "جانچ ہو رہی ہے…",
+    linkOk: "لنک کام کر رہا ہے: {name}",
+    errLinkInvalid: "PDF فائل کا مکمل https:// لنک درج کریں۔",
+    errLinkUnreachable: "یہ لنک نہیں کھل سکا۔ یقینی بنائیں کہ یہ عوامی ہے اور دوبارہ کوشش کریں۔",
+    errLinkNotPdf: "یہ لنک PDF فائل کا براہِ راست لنک نہیں ہے۔ Drive یا Dropbox کے شیئر لنک ویب پیج کھولتے ہیں، فائل نہیں۔",
+    errLinkTooLarge: "اس لنک کی PDF 10 MB سے بڑی ہے۔",
+    errLinkBusy: "اس وقت بہت سے لنک جانچے جا رہے ہیں۔ تھوڑی دیر بعد کوشش کریں۔"
   },
   ja: {
     langLabel: "言語を選択",
@@ -497,7 +587,7 @@ const translations = {
     sending: "送信中…",
     footerTagline: "シンプルな印刷。真剣なチャンス。",
     attachedPrefix: "添付:",
-    priceRatesNote: "白黒: 1ページ€0.50、10ページ以降の追加ページは€0.30。最低注文枚数: 4ページ。",
+    priceRatesNote: "白黒: 1ページ€0.50、10ページ以降の追加ページは€0.30。最低注文枚数: {min}ページ。",
     totalLabel: "サービス合計",
     payInstruction: "送信前にRevolutでお支払いのうえ、注文と照合できるよう支払いメモにメールアドレスをご記入ください。",
     payButton: "Revolutで支払う",
@@ -514,7 +604,16 @@ const translations = {
     errFileTooLarge: "ファイルは10MB以下にしてください。",
     errTooMany: "リクエストが多すぎます。数分後にもう一度お試しください。",
     errGeneric: "問題が発生し、注文は送信されませんでした。もう一度お試しください。",
-    errMode: "現在は白黒印刷のみご利用いただけます。"
+    errMode: "現在は白黒印刷のみご利用いただけます。",
+    linkLabel: "またはPDFへの直接リンクを貼り付け",
+    linkCheck: "確認",
+    linkChecking: "確認中…",
+    linkOk: "リンクは有効です：{name}",
+    errLinkInvalid: "PDFファイルへの完全なhttps://リンクを入力してください。",
+    errLinkUnreachable: "リンクを開けませんでした。公開されているか確認して、もう一度お試しください。",
+    errLinkNotPdf: "このリンクはPDFへの直接リンクではありません。DriveやDropboxの共有リンクはファイルではなくウェブページを開きます。",
+    errLinkTooLarge: "このリンク先のPDFは10 MBを超えています。",
+    errLinkBusy: "現在、多くのリンクを確認中です。少し待ってからもう一度お試しください。"
   }
 };
 
@@ -544,8 +643,12 @@ function detectDefaultLanguage() {
 
 let currentLang = detectDefaultLanguage();
 
+// The server publishes the current minimum order in the page head, so it can be changed without a new build.
+const minOrder = Number(document.querySelector('meta[name="min-copies"]')?.content) || 4;
+
 function t(key) {
-  return (translations[currentLang] && translations[currentLang][key]) || translations.en[key] || key;
+  const text = (translations[currentLang] && translations[currentLang][key]) || translations.en[key] || key;
+  return text.replace("{min}", minOrder);
 }
 
 function applyLanguage(lang) {

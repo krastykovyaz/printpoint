@@ -18,6 +18,10 @@ In production the app listens on `127.0.0.1` only and sits behind nginx, which t
 - The order is accepted once the shop has been told through at least one channel (email or Telegram). If neither works, the order is rolled back and the customer is asked to retry.
 - An order without a payment receipt is still accepted but flagged `[NO PAYMENT YET]`.
 
+## CV handoff from tsech.online
+
+A page on `HANDOFF_ORIGIN` (default `https://tsech.online`) can open this site in a new window and send its finished PDF straight into the order form. The browser does it, so nothing reaches the server until the customer submits an order. The page accepts only messages from that origin and only from the window that opened it, and only a real PDF up to 10 MB. The sending side is a few lines on tsech.online; see `docs/tsech-handoff.md`.
+
 ## Telegram
 
 Each order arrives with three buttons. **Printing** and **Delivery** email the customer straight away. **Order ready** asks you for a photo of the pickup spot (within 30 minutes) and embeds it in the email; send `/skip` to notify without a photo. Once the customer is told, the bot deletes the order's messages from the chat (the CV and receipt) and blanks the customer's email, phone and location. `/stats` reports visits against orders.

@@ -54,14 +54,22 @@
         <form id="order-form" novalidate>
           <fieldset class="form-group">
             <legend data-i18n="step1">1. Attach your resume</legend>
-            <a class="no-cv-link" href="https://tsech.online/?mode=cv" target="_blank" rel="noopener noreferrer" data-i18n="noCvLink">Don't have a resume yet? Create one here →</a>
+            <a class="no-cv-link" href="https://tsech.online/?mode=cv&lang=en" target="_blank" rel="noopener noreferrer" data-i18n="noCvLink">Don't have a resume yet? Create one here →</a>
             <label class="dropzone" id="dropzone" for="resume">
-              <input id="resume" name="resume" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required />
+              <input id="resume" name="resume" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
               <span class="upload-icon" aria-hidden="true">↑</span>
               <span class="upload-title" data-i18n="uploadTitle">Choose a file or drag it here</span>
               <span class="upload-note" data-i18n="uploadNote">PDF, DOC or DOCX · max 10 MB</span>
             </label>
             <p class="file-name" id="file-name" aria-live="polite"></p>
+            <div class="link-row">
+              <label class="link-label" for="resume-url" data-i18n="linkLabel">Or paste a direct link to a PDF</label>
+              <div class="link-field">
+                <input id="resume-url" name="resumeUrl" type="text" inputmode="url" autocomplete="off" spellcheck="false" maxlength="2000" placeholder="https://example.com/my-cv.pdf" />
+                <button class="link-check" id="check-link" type="button" data-i18n="linkCheck">Check</button>
+              </div>
+              <p class="link-status" id="link-status" aria-live="polite"></p>
+            </div>
           </fieldset>
 
           <div class="form-row">

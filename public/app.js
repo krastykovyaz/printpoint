@@ -29,9 +29,14 @@ const shareLocationButton = document.querySelector("#share-location-btn");
 const locationShareStatus = document.querySelector("#location-share-status");
 
 const pagesInput = document.querySelector("#pages");
+const linkInput = document.querySelector("#resume-url");
+const linkCheckButton = document.querySelector("#check-link");
+const linkStatus = document.querySelector("#link-status");
 
-const MIN_ORDER = 4;
+const MIN_ORDER = Number(document.querySelector('meta[name="min-copies"]')?.content) || 4;
 const MAX_PAGES = 50;
+copies.min = MIN_ORDER;
+copies.value = MIN_ORDER;
 const BULK_THRESHOLD = 10;
 const REVOLUT_TAG = "kovyaz";
 // Keep in sync with RATES_CENTS in server.js, which sets the price recorded on the order.
@@ -45,6 +50,11 @@ const ERROR_KEYS = {
   email_invalid: "emailRequired",
   file_type: "errFileType",
   mode_invalid: "errMode",
+  link_invalid: "errLinkInvalid",
+  link_unreachable: "errLinkUnreachable",
+  link_not_pdf: "errLinkNotPdf",
+  link_too_large: "errLinkTooLarge",
+  link_busy: "errLinkBusy",
   file_too_large: "errFileTooLarge",
   too_many_requests: "errTooMany",
   delivery_failed: "errGeneric",
@@ -219,7 +229,7 @@ form.addEventListener("submit", async (event) => {
   message.textContent = "";
   message.className = "form-message";
 
-  if (!fileInput.files.length) {
+  if (!fileInput.files.length && !linkInput.value.trim()) {
     message.textContent = window.i18n.t("resumeRequired");
     message.classList.add("error");
     dropzone.classList.add("has-error");
@@ -265,6 +275,7 @@ form.addEventListener("submit", async (event) => {
     copies.value = MIN_ORDER;
     if (pagesInput) pagesInput.value = 1;
     showFile(null);
+    setLinkStatus("");
     showPaymentProofFile(null);
     closePaymentProofModal();
     hasPromptedForReceipt = false;
@@ -278,4 +289,102 @@ form.addEventListener("submit", async (event) => {
     submitButton.disabled = false;
     submitButton.querySelector("span").textContent = window.i18n.t("submit");
   }
+});
+
+// Handoff from tsech.online: the page that opened this window can send its finished CV straight into
+// the form. Only that one origin is trusted, only from the window that opened us, and nothing is
+// uploaded until the customer submits the order.
+const HANDOFF_ORIGIN = document.querySelector('meta[name="handoff-origin"]')?.content || "https://tsech.online";
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+
+async function acceptHandoff(data) {
+  const blob = data?.file;
+  if (!(blob instanceof Blob) || blob.size === 0 || blob.size > MAX_FILE_BYTES) return;
+  const signature = await blob.slice(0, 5).text();
+  if (signature !== "%PDF-") return;
+
+  const rawName = typeof data.filename === "string" ? data.filename : "";
+  const baseName = rawName.split(/[\\/]/).pop().replace(/\.pdf$/i, "").replace(/[^\p{L}\p{N} ._-]/gu, "").trim().slice(0, 80);
+  const file = new File([blob], `${baseName || "resume"}.pdf`, { type: "application/pdf" });
+
+  const transfer = new DataTransfer();
+  transfer.items.add(file);
+  fileInput.files = transfer.files;
+  showFile(file);
+  linkInput.value = "";
+  setLinkStatus("");
+  emailInput?.focus();
+}
+
+window.addEventListener("message", (event) => {
+  if (!window.opener || event.source !== window.opener || event.origin !== HANDOFF_ORIGIN) return;
+  if (event.data?.type !== "printpoint-cv") return;
+  acceptHandoff(event.data);
+});
+
+// Tell the opener we are ready; the browser delivers this only if the opener really is HANDOFF_ORIGIN.
+if (window.opener) {
+  try {
+    window.opener.postMessage({ type: "printpoint-ready" }, HANDOFF_ORIGIN);
+  } catch (error) {
+    // No usable opener: the customer attaches the file by hand as usual.
+  }
+}
+
+// A pasted link is the alternative to an upload: the server fetches it when the order is sent.
+// "Check" lets the customer see right away whether the link works; nothing is kept from the check.
+function setLinkStatus(text, kind = "") {
+  linkStatus.textContent = text;
+  linkStatus.className = `link-status${kind ? ` ${kind}` : ""}`;
+}
+
+async function checkLink() {
+  const url = linkInput.value.trim();
+  if (!url) {
+    setLinkStatus("");
+    return;
+  }
+  linkCheckButton.disabled = true;
+  setLinkStatus(window.i18n.t("linkChecking"));
+  try {
+    const response = await fetch("/api/check-link", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (linkInput.value.trim() !== url) return; // edited while checking; the result is stale
+    if (!response.ok) {
+      const key = ERROR_KEYS[result.code];
+      setLinkStatus(key ? window.i18n.t(key) : window.i18n.t("errGeneric"), "error");
+      return;
+    }
+    const kb = Math.max(1, Math.round(result.size / 1024));
+    setLinkStatus(`${window.i18n.t("linkOk").replace("{name}", result.filename)} (${kb} KB)`, "ok");
+  } catch (error) {
+    setLinkStatus(window.i18n.t("errGeneric"), "error");
+  } finally {
+    linkCheckButton.disabled = false;
+  }
+}
+
+linkCheckButton.addEventListener("click", checkLink);
+linkInput.addEventListener("change", checkLink);
+linkInput.addEventListener("input", () => {
+  setLinkStatus("");
+  if (linkInput.value.trim() && fileInput.files.length) {
+    fileInput.value = "";
+    showFile(null);
+  }
+});
+// Choosing a file replaces any pasted link, so the order never carries both.
+fileInput.addEventListener("change", () => {
+  if (fileInput.files.length) {
+    linkInput.value = "";
+    setLinkStatus("");
+  }
+});
+dropzone.addEventListener("drop", () => {
+  linkInput.value = "";
+  setLinkStatus("");
 });

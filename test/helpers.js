@@ -25,11 +25,11 @@ export function isolateEnvironment(overrides = {}) {
 }
 
 export async function startServer() {
-  const { app, db, mailLog, runRetention } = await import("../server.js");
+  const { app, db, linkFetcher, mailLog, runRetention } = await import("../server.js");
   const server = await new Promise((resolve) => {
     const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
   });
-  return { server, db, mailLog, runRetention, base: `http://127.0.0.1:${server.address().port}` };
+  return { server, db, linkFetcher, mailLog, runRetention, base: `http://127.0.0.1:${server.address().port}` };
 }
 
 export const PDF = new Blob(["%PDF-1.4 test resume"], { type: "application/pdf" });

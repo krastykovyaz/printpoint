@@ -69,6 +69,16 @@ legend { padding: 0; margin: 0 0 12px; font: 500 13px "DM Mono", monospace; colo
 .upload-title { font-weight: 600; font-size: 14px; }
 .upload-note { color: var(--muted); font-size: 12px; margin-top: 4px; }
 .file-name { color: #a65339; font-size: 13px; margin: 9px 0 0; min-height: 17px; overflow-wrap: anywhere; }
+.link-row { margin-top: 14px; }
+.link-label { display: block; margin: 0 0 6px; color: var(--muted); font: 500 12px "DM Mono", monospace; }
+.link-field { display: grid; grid-template-columns: 1fr auto; }
+.link-field input { min-width: 0; height: 44px; padding: 0 12px; border: 1px solid var(--line); border-right: 0; border-radius: 0; color: var(--ink); outline: none; font: 400 14px "DM Mono", monospace; }
+.link-field input:focus { border-color: var(--navy); box-shadow: 0 0 0 3px #e9eef5; }
+.link-check { height: 44px; padding: 0 18px; border: 1px solid var(--navy); background: var(--navy); color: white; cursor: pointer; font: 500 13px "DM Mono", monospace; }
+.link-check:disabled { opacity: .6; cursor: default; }
+.link-status { margin: 8px 0 0; min-height: 17px; font-size: 13px; overflow-wrap: anywhere; }
+.link-status.ok { color: #2f6f4e; }
+.link-status.error { color: #b3402a; }
 .no-cv-link { display: inline-block; margin: 0 0 10px; color: var(--navy); font-size: 12.5px; text-decoration: underline; text-underline-offset: 2px; }
 .no-cv-link:hover { color: var(--accent); }
 .form-row { display: grid; grid-template-columns: .76fr 1.24fr; gap: 27px; }

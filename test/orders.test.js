@@ -93,6 +93,14 @@ test("serves the page in the requested language and ignores unknown or prototype
   }
 });
 
+test("publishes the minimum order to the page so it can be relaxed from the server's settings", async () => {
+  assert.match(await (await fetch(`${ctx.base}/`)).text(), /<meta name="min-copies" content="4" \/>/);
+});
+
+test("names tsech.online as the only site allowed to hand a CV into the form", async () => {
+  assert.match(await (await fetch(`${ctx.base}/`)).text(), /<meta name="handoff-origin" content="https:\/\/tsech\.online" \/>/);
+});
+
 test("sends security headers and does not advertise the framework", async () => {
   const response = await fetch(`${ctx.base}/`);
   assert.equal(response.headers.get("x-powered-by"), null);

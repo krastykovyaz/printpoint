@@ -7,6 +7,7 @@ import Database from "better-sqlite3";
 import express from "express";
 import multer from "multer";
 import nodemailer from "nodemailer";
+import { downloadPdf, LinkError } from "./lib/fetch-pdf.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -22,7 +23,8 @@ const dataDir = process.env.DATA_DIR || path.join(__dirname, "data");
 const retentionDays = Number(process.env.RETENTION_DAYS) || 30;
 const statsTimeZone = process.env.STATS_TIMEZONE || "Europe/Luxembourg";
 
-const MIN_COPIES = 4;
+// Normally 4. Set MIN_COPIES=1 in .env for a short while to allow single-copy orders (e.g. to test the printer).
+const MIN_COPIES = Math.min(4, Math.max(1, Math.floor(Number(process.env.MIN_COPIES)) || 4));
 const MAX_COPIES = 100;
 const MAX_PAGES = 50;
 const BULK_THRESHOLD = 10;
@@ -41,6 +43,8 @@ const PRINT_CLAIM_TIMEOUT_MINUTES = 10;
 // The agent reports the printer's state now and then; it is only kept in memory and is stale after this long.
 const PRINTER_STATUS_STALE_MINUTES = 3;
 let printerStatus = null;
+// The only site allowed to send a finished CV into the order form (see the handoff code in public/app.js).
+const HANDOFF_ORIGIN = process.env.HANDOFF_ORIGIN || "https://tsech.online";
 const ORDER_CODE_PATTERN = /^QP-[0-9A-F]{6}$/;
 const EMAIL_PATTERN = /^[^\s@,;:<>()[\]"'\\]+@[^\s@,;:<>()[\]"'\\]+\.[^\s@,;:<>()[\]"'\\]{2,}$/;
 
@@ -154,6 +158,8 @@ const allowOrderGlobally = createRateLimiter({
   windowMs: 24 * 60 * 60 * 1000,
   max: Number(process.env.ORDER_DAILY_LIMIT) || 200
 });
+const allowLinkCheckFromIp = createRateLimiter({ windowMs: 15 * 60 * 1000, max: Number(process.env.LINK_CHECK_RATE_LIMIT) || 10 });
+const allowLinkCheckGlobally = createRateLimiter({ windowMs: 24 * 60 * 60 * 1000, max: 1000 });
 const allowVisitFromIp = createRateLimiter({ windowMs: 30 * 60 * 1000, max: 1 });
 
 function orderRateLimit(req, _res, next) {
@@ -162,6 +168,35 @@ function orderRateLimit(req, _res, next) {
     return;
   }
   next();
+}
+
+function linkCheckRateLimit(req, _res, next) {
+  if (!allowLinkCheckFromIp(req.ip) || !allowLinkCheckGlobally("all")) {
+    next(new UserError("too_many_requests", "Too many requests. Please try again in a few minutes.", 429));
+    return;
+  }
+  next();
+}
+
+// Seam for tests: they swap `download` so no real network is needed.
+const linkFetcher = { download: downloadPdf };
+const MAX_LINK_FETCHES = 4;
+let activeLinkFetches = 0;
+
+// Fetches a PDF a visitor linked to. Failures become the same stable user errors as bad uploads.
+async function fetchResumeLink(rawUrl) {
+  if (activeLinkFetches >= MAX_LINK_FETCHES) {
+    throw new UserError("link_busy", "Too many links are being checked right now. Please try again in a moment.", 503);
+  }
+  activeLinkFetches += 1;
+  try {
+    return await linkFetcher.download(rawUrl, { destDir: uploadDir });
+  } catch (error) {
+    if (error instanceof LinkError) throw new UserError(error.code, error.message);
+    throw error;
+  } finally {
+    activeLinkFetches -= 1;
+  }
 }
 
 const resumeExtensions = new Set([".pdf", ".doc", ".docx"]);
@@ -739,7 +774,7 @@ app.get("/", (req, res) => {
     .replaceAll('content="Print Point — Resume printing"', `content="${title}"`)
     .replace(/content="Attach your resume, choose copies, pay, and get it printed\."/g, `content="${description}"`)
     .replace('property="og:url" content="https://print.unilu.space/"', `property="og:url" content="https://print.unilu.space/${canonicalSuffix}"`)
-    .replace("</head>", `    <meta property="og:locale" content="${og.locale}" />\n  </head>`);
+    .replace("</head>", `    <meta property="og:locale" content="${og.locale}" />\n    <meta name="min-copies" content="${MIN_COPIES}" />\n    <meta name="handoff-origin" content="${escapeHtmlAttr(HANDOFF_ORIGIN)}" />\n  </head>`);
 
   res.type("html").send(html);
 });
@@ -944,8 +979,20 @@ async function notifyShop(order, resumeFile, paymentProofFile) {
 
 const orderUpload = upload.fields([{ name: "resume", maxCount: 1 }, { name: "paymentProof", maxCount: 1 }]);
 
+// Lets the page tell the visitor whether a pasted link works, before they order. Nothing is kept.
+app.post("/api/check-link", linkCheckRateLimit, express.json({ limit: "4kb" }), async (req, res, next) => {
+  try {
+    const file = await fetchResumeLink(req.body?.url);
+    fs.rmSync(file.path, { force: true });
+    res.json({ ok: true, filename: file.originalName, size: file.size });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/api/orders", orderRateLimit, orderUpload, async (req, res, next) => {
-  const resumeFile = req.files?.resume?.[0];
+  let resumeFile = req.files?.resume?.[0];
+  const resumeUrl = String(req.body?.resumeUrl || "").trim();
   const paymentProofFile = req.files?.paymentProof?.[0];
   const removeUploads = ({ keepResume = false } = {}) => {
     for (const file of [keepResume ? null : resumeFile, paymentProofFile]) {
@@ -955,6 +1002,18 @@ app.post("/api/orders", orderRateLimit, orderUpload, async (req, res, next) => {
 
   let order;
   try {
+    if (resumeFile && resumeUrl) {
+      throw new UserError("resume_conflict", "Attach a file or paste a link, not both.");
+    }
+    if (!resumeFile && resumeUrl) {
+      const downloaded = await fetchResumeLink(resumeUrl);
+      // Same shape multer gives uploads, including its latin1-encoded original name.
+      resumeFile = {
+        path: downloaded.path,
+        filename: downloaded.filename,
+        originalname: Buffer.from(downloaded.originalName, "utf8").toString("latin1")
+      };
+    }
     order = validateOrder(req.body, resumeFile, paymentProofFile);
     if (!isConfigured()) {
       throw new UserError("unavailable", "Ordering is temporarily unavailable. Please try again later.", 503);
@@ -1120,7 +1179,7 @@ app.use((error, _req, res, _next) => {
   res.status(500).json({ error: "Something went wrong. Please try again.", code: "server_error" });
 });
 
-export { app, db, mailLog, priceCents, runRetention };
+export { app, db, linkFetcher, mailLog, priceCents, runRetention };
 
 // PM2 loads the script through its own wrapper, so argv[1] is not this file there.
 const entryCandidates = [process.argv[1], process.env.pm_exec_path].filter(Boolean);
