@@ -35,11 +35,74 @@ test("with Telegram off, the email carries the files so the shop can still print
   assert.equal(shopMail.attachments.length, 1);
 });
 
-test("prices copies × pages with the discount only past 10 pages (12 pages = 10 × €0.50 + 2 × €0.30)", async () => {
-  const { status, body } = await postOrder(ctx.base, orderForm({ copies: "4", pages: "3" }));
-  assert.equal(status, 201);
-  assert.equal(body.totalPages, 12);
-  assert.equal(body.price, "€5.60");
+// Runs a block with a stand-in for the page counter (the real one reads the file with pdfinfo).
+async function withPages(result, run) {
+  const real = ctx.pageCounter.count;
+  ctx.pageCounter.count = async () => result;
+  try {
+    return await run();
+  } finally {
+    ctx.pageCounter.count = real;
+  }
+}
+
+test("prices copies × pages from the document, with the discount only past 10 pages (12 pages = 10 × €0.50 + 2 × €0.30)", async () => {
+  await withPages({ pages: 3 }, async () => {
+    // The browser claims 1 page; only the document's own count is used.
+    const { status, body } = await postOrder(ctx.base, orderForm({ copies: "4", pages: "1" }));
+    assert.equal(status, 201);
+    assert.equal(body.totalPages, 12);
+    assert.equal(body.price, "€5.60");
+    assert.equal(ctx.db.prepare("SELECT pages, pages_known FROM orders WHERE order_code = ?").get(body.orderCode).pages, 3);
+  });
+});
+
+test("a page number typed in the browser can never lower the price", async () => {
+  await withPages({ pages: 5 }, async () => {
+    for (const pages of ["0", "1", "-3", "abc", "9999"]) {
+      const { status, body } = await postOrder(ctx.base, orderForm({ copies: "4", pages }));
+      assert.equal(status, 201, pages);
+      assert.equal(body.totalPages, 20, pages);
+    }
+  });
+});
+
+test("a document with too many pages is refused, and one whose pages cannot be read is priced as one page and flagged", async () => {
+  await withPages({ pages: 60 }, async () => {
+    const { status, body } = await postOrder(ctx.base, orderForm({ copies: "4" }));
+    assert.equal(status, 400);
+    assert.equal(body.code, "pages_invalid");
+  });
+  await withPages({ pages: null }, async () => {
+    ctx.mailLog.length = 0;
+    const { status, body } = await postOrder(ctx.base, orderForm({ copies: "4" }));
+    assert.equal(status, 201);
+    assert.equal(body.totalPages, 4);
+    assert.equal(ctx.db.prepare("SELECT pages_known FROM orders WHERE order_code = ?").get(body.orderCode).pages_known, 0);
+    const shopMail = ctx.mailLog.find((mail) => mail.to?.[0]?.address === "shop@example.test");
+    assert.match(shopMail.text, /page count not detected, priced as 1 page per copy/);
+  });
+});
+
+test("the page count endpoint reports a CV's pages, refuses other files, and keeps nothing", async () => {
+  await withPages({ pages: 7 }, async () => {
+    const form = new FormData();
+    form.append("resume", PDF, "cv.pdf");
+    const ok = await fetch(`${ctx.base}/api/inspect`, { method: "POST", body: form });
+    assert.deepEqual(await ok.json(), { pages: 7, known: true });
+
+    const bad = new FormData();
+    bad.append("resume", new Blob(["<html>"]), "evil.pdf");
+    const refused = await fetch(`${ctx.base}/api/inspect`, { method: "POST", body: bad });
+    assert.equal(refused.status, 400);
+    assert.equal((await refused.json()).code, "file_type");
+    assert.deepEqual(uploads(), []);
+  });
+  await withPages({ pages: null }, async () => {
+    const form = new FormData();
+    form.append("resume", PDF, "old.pdf");
+    assert.deepEqual(await (await fetch(`${ctx.base}/api/inspect`, { method: "POST", body: form })).json(), { pages: null, known: false });
+  });
 });
 
 test("rejects invalid input with a stable error code and leaves no files behind", async (t) => {
@@ -50,11 +113,12 @@ test("rejects invalid input with a stable error code and leaves no files behind"
     ["too few copies", orderForm({ copies: "3" }), "copies_invalid"],
     ["too many copies", orderForm({ copies: "101" }), "copies_invalid"],
     ["fractional copies", orderForm({ copies: "4.5" }), "copies_invalid"],
-    ["zero pages", orderForm({ pages: "0" }), "pages_invalid"],
     ["unknown print mode", orderForm({ printMode: "constructor" }), "mode_invalid"],
     ["colour is not offered", orderForm({ printMode: "color" }), "mode_invalid"],
     ["over-long location", orderForm({ location: "A".repeat(301) }), "field_too_long"],
-    ["wrong extension", orderForm({}, { resume: [new Blob(["text"]), "note.txt"] }), "file_type"],
+    ["wrong extension", orderForm({}, { resume: [new Blob(["MZ"]), "setup.exe"] }), "file_type"],
+    ["zip-less file renamed to .pptx", orderForm({}, { resume: [new Blob(["MZ binary"]), "slides.pptx"] }), "file_type"],
+    ["text file with NUL bytes", orderForm({}, { resume: [new Blob([Buffer.from([0x4d, 0x5a, 0, 0])]), "notes.md"] }), "file_type"],
     ["script renamed to .pdf", orderForm({}, { resume: [new Blob(["<script>alert(1)</script>"]), "evil.pdf"] }), "file_type"],
     ["html claiming to be a pdf", orderForm({}, { resume: [new Blob(["<html>"], { type: "application/pdf" }), "evil.html"] }), "file_type"],
     ["fake receipt image", orderForm({}, { resume: [PDF, "resume.pdf"], paymentProof: [new Blob(["MZ"]), "receipt.png"] }), "file_type"]
@@ -84,7 +148,7 @@ test("rejects a file over 10 MB", async () => {
 test("serves the page in the requested language and ignores unknown or prototype keys", async () => {
   const french = await (await fetch(`${ctx.base}/?lang=fr`)).text();
   assert.match(french, /<html lang="fr">/);
-  assert.match(french, /Print Point — Impression de CV/);
+  assert.match(french, /Print CV — Impression de CV/);
 
   for (const lang of ["constructor", "__proto__", "toString", "xx"]) {
     const response = await fetch(`${ctx.base}/?lang=${lang}`);
@@ -106,6 +170,11 @@ test("sends security headers and does not advertise the framework", async () => 
   assert.equal(response.headers.get("x-powered-by"), null);
   assert.equal(response.headers.get("x-frame-options"), "DENY");
   assert.match(response.headers.get("content-security-policy"), /default-src 'self'/);
+  // Without Grandlivre configured, no third-party script or frame is allowed and the page runs the old payment flow.
+  assert.match(response.headers.get("content-security-policy"), /script-src 'self';/);
+  assert.doesNotMatch(response.headers.get("content-security-policy"), /frame-src|portemonnaie/);
+  const page = await (await fetch(`${ctx.base}/`)).text();
+  assert.doesNotMatch(page, /name="pay-mode"/);
 });
 
 test("does not expose server files", async () => {

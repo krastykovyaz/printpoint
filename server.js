@@ -8,6 +8,10 @@ import express from "express";
 import multer from "multer";
 import nodemailer from "nodemailer";
 import { downloadPdf, LinkError } from "./lib/fetch-pdf.js";
+import { amountMatches, closePayLink, createPayLink, fetchNotices, grandlivreConfig, linkMatches, nextPayState, verifySignature } from "./lib/grandlivre.js";
+import { CONVERTIBLE_EXTENSIONS, ConvertError, toPdf } from "./lib/convert.js";
+import { countPages } from "./lib/pagecount.js";
+import { checkReceipt, describeReceipt } from "./lib/receipt.js";
 import { createPaperTray } from "./paper-tray.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -18,7 +22,7 @@ app.set("trust proxy", "loopback");
 
 const port = Number(process.env.PORT) || 3030;
 const host = process.env.HOST || "127.0.0.1";
-const shopName = process.env.SHOP_NAME || "PrintPoint";
+const shopName = process.env.SHOP_NAME || "Print CV";
 const uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, "uploads");
 const dataDir = process.env.DATA_DIR || path.join(__dirname, "data");
 const retentionDays = Number(process.env.RETENTION_DAYS) || 30;
@@ -29,10 +33,18 @@ const MIN_COPIES = Math.min(4, Math.max(1, Math.floor(Number(process.env.MIN_COP
 const MAX_COPIES = 100;
 const MAX_PAGES = 50;
 const BULK_THRESHOLD = 10;
-// Keep in sync with RATES in public/app.js; the server value is the one recorded on the order.
+// Prices in cents. The defaults are the normal prices; .env can set others without a code change, e.g. the pilot
+// "€0.20 a page, at least €1.00": PRICE_PAGE_CENTS=20 PRICE_BULK_CENTS=20 MIN_ORDER_CENTS=100.
+// The page gets the same rules from the <meta name="price-rules"> tag, so what it shows is what is charged.
+function centsSetting(name, fallback) {
+  const raw = process.env[name];
+  const value = Number(raw);
+  return raw !== undefined && raw !== "" && Number.isInteger(value) && value >= 0 && value <= 10000 ? value : fallback;
+}
 const RATES_CENTS = {
-  "black-white": { standard: 50, bulk: 30 }
+  "black-white": { standard: centsSetting("PRICE_PAGE_CENTS", 50), bulk: centsSetting("PRICE_BULK_CENTS", 30) }
 };
+const MIN_ORDER_CENTS = centsSetting("MIN_ORDER_CENTS", 0);
 const MAX_PHONE_LENGTH = 40;
 const MAX_LOCATION_LENGTH = 300;
 const TELEGRAM_CAPTION_LIMIT = 1024;
@@ -47,6 +59,10 @@ let printerStatus = null;
 // The only site allowed to send a finished CV into the order form (see the handoff code in public/app.js).
 const HANDOFF_ORIGIN = process.env.HANDOFF_ORIGIN || "https://tsech.online";
 const ORDER_CODE_PATTERN = /^QP-[0-9A-F]{6}$/;
+// Grandlivre payments (see lib/grandlivre.js). Off unless both the key and the webhook secret are set.
+const grandlivre = () => grandlivreConfig();
+const PAY_HOLD_HOURS = Number(process.env.GRANDLIVRE_HOLD_HOURS) || 24;
+const PAY_REPORTED_RECHECK_MINUTES = 5;
 const EMAIL_PATTERN = /^[^\s@,;:<>()[\]"'\\]+@[^\s@,;:<>()[\]"'\\]+\.[^\s@,;:<>()[\]"'\\]{2,}$/;
 
 class UserError extends Error {
@@ -88,7 +104,20 @@ for (const [column, type] of [
   ["price_cents", "INTEGER"],
   ["telegram_messages", "TEXT"],
   ["print_status", "TEXT"],
-  ["print_claimed_at", "TEXT"]
+  ["print_claimed_at", "TEXT"],
+  ["receipt_status", "TEXT"],
+  ["receipt_cents", "INTEGER"],
+  ["pay_state", "TEXT"],
+  ["pay_state_at", "TEXT"],
+  ["pay_link_id", "TEXT"],
+  ["pay_link_token", "TEXT"],
+  ["pay_link_url", "TEXT"],
+  ["status_key", "TEXT"],
+  ["pay_checked_at", "INTEGER"],
+  ["paid_at", "TEXT"],
+  ["shop_notified", "INTEGER DEFAULT 0"],
+  ["confirmation_sent", "INTEGER DEFAULT 0"],
+  ["pages_known", "INTEGER"]
 ]) {
   if (!orderColumns.includes(column)) {
     db.exec(`ALTER TABLE orders ADD COLUMN ${column} ${type}`);
@@ -113,6 +142,22 @@ db.exec(`
 // Alert when the sheets left drop below this share of what was loaded.
 const paperTray = createPaperTray(db, Number(process.env.PAPER_ALERT_PERCENT) || 90);
 
+// One row per payment event received (the delivery log). A retried delivery has the same delivery id and is ignored;
+// anything else is applied, and the state rules make a repeat harmless (it cannot change the state or resend messages).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS grandlivre_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    notice TEXT NOT NULL,
+    state TEXT NOT NULL,
+    event TEXT,
+    delivery TEXT NOT NULL UNIQUE,
+    order_code TEXT,
+    source TEXT,
+    result TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
 function sqlTimestamp(date) {
   return date.toISOString().slice(0, 19).replace("T", " ");
 }
@@ -121,7 +166,7 @@ function priceCents(totalPages, printMode) {
   const rates = RATES_CENTS[printMode];
   const standardPages = Math.min(totalPages, BULK_THRESHOLD);
   const extraPages = Math.max(0, totalPages - BULK_THRESHOLD);
-  return standardPages * rates.standard + extraPages * rates.bulk;
+  return Math.max(MIN_ORDER_CENTS, standardPages * rates.standard + extraPages * rates.bulk);
 }
 
 function formatPrice(cents) {
@@ -184,6 +229,12 @@ function linkCheckRateLimit(req, _res, next) {
 
 // Seam for tests: they swap `download` so no real network is needed.
 const linkFetcher = { download: downloadPdf };
+// Seam for tests: counts the pages of a CV file.
+const pageCounter = { count: countPages };
+// Seam for tests: turns a non-PDF CV into a PDF beside it.
+const pdfConverter = { toPdf };
+// Seam for tests, like linkFetcher: reads the amount on a payment receipt.
+const receiptChecker = { check: checkReceipt };
 const MAX_LINK_FETCHES = 4;
 let activeLinkFetches = 0;
 
@@ -203,16 +254,35 @@ async function fetchResumeLink(rawUrl) {
   }
 }
 
-const resumeExtensions = new Set([".pdf", ".doc", ".docx"]);
+const resumeExtensions = new Set([".pdf", ...CONVERTIBLE_EXTENSIONS]);
+const RESUME_TYPE_MESSAGE = "Please upload a PDF, Word, PowerPoint, Excel, OpenDocument, Pages, Keynote, RTF, text, Markdown, EPUB, DjVu file or a photo.";
 const proofExtensions = new Set([".pdf", ".jpg", ".jpeg", ".png", ".webp"]);
 
+const ZIP_SIGNATURE = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
+const OLE_SIGNATURE = Buffer.from([0xd0, 0xcf, 0x11, 0xe0]);
 const FILE_SIGNATURES = {
-  ".doc": Buffer.from([0xd0, 0xcf, 0x11, 0xe0]),
-  ".docx": Buffer.from([0x50, 0x4b, 0x03, 0x04]),
+  ".doc": OLE_SIGNATURE,
+  ".ppt": OLE_SIGNATURE,
+  ".pps": OLE_SIGNATURE,
+  ".xls": OLE_SIGNATURE,
+  ".docx": ZIP_SIGNATURE,
+  ".pptx": ZIP_SIGNATURE,
+  ".ppsx": ZIP_SIGNATURE,
+  ".xlsx": ZIP_SIGNATURE,
+  ".odt": ZIP_SIGNATURE,
+  ".odp": ZIP_SIGNATURE,
+  ".ods": ZIP_SIGNATURE,
+  ".epub": ZIP_SIGNATURE,
+  ".pages": ZIP_SIGNATURE,
+  ".key": ZIP_SIGNATURE,
+  ".djvu": Buffer.from("AT&TFORM"),
+  ".rtf": Buffer.from("{\\rtf"),
   ".jpg": Buffer.from([0xff, 0xd8, 0xff]),
   ".jpeg": Buffer.from([0xff, 0xd8, 0xff]),
   ".png": Buffer.from([0x89, 0x50, 0x4e, 0x47])
 };
+
+const TEXT_EXTENSIONS = new Set([".txt", ".md", ".markdown", ".csv"]);
 
 function hasValidSignature(filePath) {
   const extension = path.extname(filePath).toLowerCase();
@@ -223,6 +293,8 @@ function hasValidSignature(filePath) {
   const bytes = head.subarray(0, length);
 
   if (extension === ".pdf") return bytes.includes("%PDF-");
+  if (TEXT_EXTENSIONS.has(extension)) return length > 0 && !bytes.includes(0);
+  if (extension === ".heic") return bytes.subarray(4, 8).toString() === "ftyp";
   if (extension === ".webp") {
     return bytes.subarray(0, 4).toString() === "RIFF" && bytes.subarray(8, 12).toString() === "WEBP";
   }
@@ -233,6 +305,28 @@ function hasValidSignature(filePath) {
 // multer hands over non-ASCII filenames as latin1 bytes.
 function decodeFilename(name) {
   return Buffer.from(name, "latin1").toString("utf8").slice(0, 200);
+}
+
+// Every CV is kept, counted and printed as a PDF. Takes a multer-shaped file and returns one for the PDF;
+// the original upload is always removed. Rejects with the same user errors as a bad upload.
+async function resumeAsPdf(file) {
+  if (path.extname(file.path).toLowerCase() === ".pdf") return file;
+  try {
+    if (!hasValidSignature(file.path)) throw new UserError("file_type", RESUME_TYPE_MESSAGE);
+    let pdfPath;
+    try {
+      pdfPath = await pdfConverter.toPdf(file.path);
+    } catch (error) {
+      if (!(error instanceof ConvertError)) throw error;
+      console.error(`Could not convert ${path.basename(file.path)}:`, error.message);
+      throw new UserError("convert_failed", "We couldn't read this file. Please save it as a PDF and try again.");
+    }
+    const original = decodeFilename(file.originalname);
+    const pdfName = `${path.basename(original, path.extname(original)) || "document"}.pdf`;
+    return { path: pdfPath, filename: path.basename(pdfPath), originalname: Buffer.from(pdfName, "utf8").toString("latin1") };
+  } finally {
+    fs.rmSync(file.path, { force: true });
+  }
 }
 
 const storage = multer.diskStorage({
@@ -253,7 +347,7 @@ const upload = multer({
       return cb(new UserError("file_type", "Payment proof must be a PDF, JPG, PNG, or WEBP file."));
     }
     if (resumeExtensions.has(extension)) return cb(null, true);
-    return cb(new UserError("file_type", "Please upload a PDF, DOC, or DOCX file."));
+    return cb(new UserError("file_type", RESUME_TYPE_MESSAGE));
   }
 });
 
@@ -551,8 +645,23 @@ async function handlePrintButton(callbackQuery, orderCode) {
   await answerTelegramCallback(callbackQuery.id, "🖨 Queued — it prints in a moment.");
 }
 
+async function handlePayCheckButton(callbackQuery, orderCode) {
+  try {
+    const state = await refreshPayment(orderCode);
+    const words = { paid: "✅ Paid", payment_reported: "💶 Reported, not confirmed yet", payment_problem: "⚠️ Declined", payment_mismatch: "⚠️ Amount does not match", awaiting_payment: "Not paid yet" };
+    await answerTelegramCallback(callbackQuery.id, state ? (words[state] || state) : "No online payment for this order.");
+  } catch (error) {
+    console.error(`Payment check for ${orderCode} failed:`, error.message);
+    await answerTelegramCallback(callbackQuery.id, "Could not reach Grandlivre. Try again in a moment.");
+  }
+}
+
 async function handleStatusButton(callbackQuery, chatId) {
   const [action, orderCode] = String(callbackQuery.data || "").split(":");
+  if (action === "paycheck" && ORDER_CODE_PATTERN.test(orderCode || "")) {
+    await handlePayCheckButton(callbackQuery, orderCode);
+    return;
+  }
   if (action === "print" && ORDER_CODE_PATTERN.test(orderCode || "")) {
     await handlePrintButton(callbackQuery, orderCode);
     return;
@@ -697,6 +806,7 @@ function isAuthorizedWebhook(req) {
 // Anonymises old orders and deletes their files; also removes uploads that no order refers to.
 function runRetention() {
   try {
+    expireUnpaidOrders();
     const cutoffMs = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
     db.prepare(`
       UPDATE orders
@@ -735,6 +845,9 @@ app.use((_req, res, next) => {
     "Strict-Transport-Security": "max-age=15552000",
     "Content-Security-Policy": [
       "default-src 'self'",
+      // Only Grandlivre's payment page may be framed (no third-party script is loaded), and nothing broader.
+      "script-src 'self'",
+      ...(grandlivre() ? [`frame-src ${grandlivre().origin}`] : []),
       "style-src 'self' https://fonts.googleapis.com",
       "font-src https://fonts.gstatic.com",
       "img-src 'self' data:",
@@ -755,17 +868,17 @@ app.post("/api/track-visit", (req, res) => {
 });
 
 const OG_TRANSLATIONS = {
-  en: { title: "Print Point — Resume printing", description: "Attach your resume, choose copies, pay, and get it printed.", locale: "en_US" },
-  zh: { title: "Print Point — 简历打印", description: "上传简历，选择份数，付款后即可完成打印。", locale: "zh_CN" },
-  hi: { title: "Print Point — रिज़्यूमे प्रिंटिंग", description: "अपना रिज़्यूमे अटैच करें, प्रतियाँ चुनें, भुगतान करें और प्रिंट करवाएँ।", locale: "hi_IN" },
-  es: { title: "Print Point — Impresión de currículums", description: "Adjunta tu currículum, elige las copias, paga y recíbelo impreso.", locale: "es_ES" },
-  fr: { title: "Print Point — Impression de CV", description: "Joignez votre CV, choisissez le nombre de copies, payez, et faites-le imprimer.", locale: "fr_FR" },
-  ar: { title: "Print Point — طباعة السيرة الذاتية", description: "أرفق سيرتك الذاتية، اختر عدد النسخ، ادفع، واحصل على طباعتها.", locale: "ar_AR" },
-  bn: { title: "Print Point — রিজিউমি প্রিন্টিং", description: "আপনার রিজিউমি সংযুক্ত করুন, কপির সংখ্যা নির্বাচন করুন, পেমেন্ট করুন এবং প্রিন্ট করিয়ে নিন।", locale: "bn_BD" },
-  pt: { title: "Print Point — Impressão de currículos", description: "Anexe o seu currículo, escolha as cópias, pague e receba-o impresso.", locale: "pt_PT" },
-  ru: { title: "Print Point — Печать резюме", description: "Прикрепите резюме, выберите количество копий, оплатите и получите распечатку.", locale: "ru_RU" },
-  ur: { title: "Print Point — ریزیومے پرنٹنگ", description: "اپنا ریزیومے منسلک کریں، کاپیوں کی تعداد منتخب کریں، ادائیگی کریں اور پرنٹ کروائیں۔", locale: "ur_PK" },
-  ja: { title: "Print Point — 履歴書印刷", description: "履歴書を添付し、部数を選んでお支払いいただくと印刷いたします。", locale: "ja_JP" }
+  en: { title: "Print CV — Resume printing", description: "Attach your resume, choose copies, pay, and get it printed.", locale: "en_US" },
+  zh: { title: "Print CV — 简历打印", description: "上传简历，选择份数，付款后即可完成打印。", locale: "zh_CN" },
+  hi: { title: "Print CV — रिज़्यूमे प्रिंटिंग", description: "अपना रिज़्यूमे अटैच करें, प्रतियाँ चुनें, भुगतान करें और प्रिंट करवाएँ।", locale: "hi_IN" },
+  es: { title: "Print CV — Impresión de currículums", description: "Adjunta tu currículum, elige las copias, paga y recíbelo impreso.", locale: "es_ES" },
+  fr: { title: "Print CV — Impression de CV", description: "Joignez votre CV, choisissez le nombre de copies, payez, et faites-le imprimer.", locale: "fr_FR" },
+  ar: { title: "Print CV — طباعة السيرة الذاتية", description: "أرفق سيرتك الذاتية، اختر عدد النسخ، ادفع، واحصل على طباعتها.", locale: "ar_AR" },
+  bn: { title: "Print CV — রিজিউমি প্রিন্টিং", description: "আপনার রিজিউমি সংযুক্ত করুন, কপির সংখ্যা নির্বাচন করুন, পেমেন্ট করুন এবং প্রিন্ট করিয়ে নিন।", locale: "bn_BD" },
+  pt: { title: "Print CV — Impressão de currículos", description: "Anexe o seu currículo, escolha as cópias, pague e receba-o impresso.", locale: "pt_PT" },
+  ru: { title: "Print CV — Печать резюме", description: "Прикрепите резюме, выберите количество копий, оплатите и получите распечатку.", locale: "ru_RU" },
+  ur: { title: "Print CV — ریزیومے پرنٹنگ", description: "اپنا ریزیومے منسلک کریں، کاپیوں کی تعداد منتخب کریں، ادائیگی کریں اور پرنٹ کروائیں۔", locale: "ur_PK" },
+  ja: { title: "Print CV — 履歴書印刷", description: "履歴書を添付し、部数を選んでお支払いいただくと印刷いたします。", locale: "ja_JP" }
 };
 
 function escapeHtmlAttr(value) {
@@ -793,28 +906,30 @@ app.get("/", (req, res) => {
 
   const html = getIndexTemplate()
     .replace('<html lang="en">', `<html lang="${lang}">`)
-    .replace("<title>Print Point — Resume printing</title>", `<title>${title}</title>`)
-    .replaceAll('content="Print Point — Resume printing"', `content="${title}"`)
+    .replace("<title>Print CV — Resume printing</title>", `<title>${title}</title>`)
+    .replaceAll('content="Print CV — Resume printing"', `content="${title}"`)
     .replace(/content="Attach your resume, choose copies, pay, and get it printed\."/g, `content="${description}"`)
     .replace('property="og:url" content="https://print.unilu.space/"', `property="og:url" content="https://print.unilu.space/${canonicalSuffix}"`)
-    .replace("</head>", `    <meta property="og:locale" content="${og.locale}" />\n    <meta name="min-copies" content="${MIN_COPIES}" />\n    <meta name="handoff-origin" content="${escapeHtmlAttr(HANDOFF_ORIGIN)}" />\n  </head>`);
+    .replace("</head>", `    <meta property="og:locale" content="${og.locale}" />\n    <meta name="min-copies" content="${MIN_COPIES}" />\n    <meta name="price-rules" content="${escapeHtmlAttr(JSON.stringify({ page: RATES_CENTS["black-white"].standard, bulk: RATES_CENTS["black-white"].bulk, after: BULK_THRESHOLD, min: MIN_ORDER_CENTS }))}" />\n    <meta name="handoff-origin" content="${escapeHtmlAttr(HANDOFF_ORIGIN)}" />${grandlivre() ? `\n    <meta name="pay-mode" content="grandlivre" />\n    <meta name="grandlivre-origin" content="${escapeHtmlAttr(grandlivre().origin)}" />` : ""}\n  </head>`);
 
   res.type("html").send(html);
 });
 
 app.use(express.static(path.join(__dirname, "public"), { index: false }));
 
-function validateOrder(body, resumeFile, paymentProofFile) {
+// `pageInfo` is what the server read from the document ({ pages } or { pages: null }); the browser's own page number is ignored.
+function validateOrder(body, resumeFile, paymentProofFile, pageInfo = { pages: null }) {
   const email = String(body.email || "").trim().toLowerCase();
   const phone = String(body.phone || "").trim();
   const location = String(body.location || "").trim();
   const copies = Number(body.copies);
-  const pages = body.pages === undefined || body.pages === "" ? 1 : Number(body.pages);
+  const pagesKnown = Number.isInteger(pageInfo.pages) && pageInfo.pages > 0;
+  const pages = pagesKnown ? pageInfo.pages : 1;
   const printMode = String(body.printMode || "");
 
   if (!resumeFile) throw new UserError("resume_required", "Please attach your resume.");
   if (!hasValidSignature(resumeFile.path)) {
-    throw new UserError("file_type", "Please upload a PDF, DOC, or DOCX file.");
+    throw new UserError("file_type", RESUME_TYPE_MESSAGE);
   }
   if (paymentProofFile && !hasValidSignature(paymentProofFile.path)) {
     throw new UserError("file_type", "Payment proof must be a PDF, JPG, PNG, or WEBP file.");
@@ -829,7 +944,7 @@ function validateOrder(body, resumeFile, paymentProofFile) {
     throw new UserError("copies_invalid", `Choose between ${MIN_COPIES} and ${MAX_COPIES} copies.`);
   }
   if (!Number.isInteger(pages) || pages < 1 || pages > MAX_PAGES) {
-    throw new UserError("pages_invalid", `Enter between 1 and ${MAX_PAGES} pages.`);
+    throw new UserError("pages_invalid", `Documents of up to ${MAX_PAGES} pages can be ordered here (this one has ${pages}).`);
   }
   if (!Object.hasOwn(RATES_CENTS, printMode)) {
     throw new UserError("mode_invalid", "Only black & white printing is available right now.");
@@ -842,18 +957,22 @@ function validateOrder(body, resumeFile, paymentProofFile) {
     location: location || null,
     copies,
     pages,
+    pagesKnown: pagesKnown ? 1 : 0,
     totalPages,
     printMode,
     priceCents: priceCents(totalPages, printMode),
     originalName: decodeFilename(resumeFile.originalname),
     storedName: resumeFile.filename,
-    paymentProofName: paymentProofFile ? paymentProofFile.filename : null
+    paymentProofName: paymentProofFile ? paymentProofFile.filename : null,
+    payState: null,
+    payStateAt: null,
+    statusKey: null
   };
 }
 
 const insertOrderStatement = db.prepare(`
-  INSERT INTO orders (order_code, customer_email, phone, location, copies, pages, price_cents, print_mode, original_name, stored_name, payment_proof_name)
-  VALUES (@orderCode, @customerEmail, @phone, @location, @copies, @pages, @priceCents, @printMode, @originalName, @storedName, @paymentProofName)
+  INSERT INTO orders (order_code, customer_email, phone, location, copies, pages, price_cents, print_mode, original_name, stored_name, payment_proof_name, pay_state, pay_state_at, status_key, pages_known)
+  VALUES (@orderCode, @customerEmail, @phone, @location, @copies, @pages, @priceCents, @printMode, @originalName, @storedName, @paymentProofName, @payState, @payStateAt, @statusKey, @pagesKnown)
 `);
 
 function saveOrder(order) {
@@ -870,11 +989,12 @@ function saveOrder(order) {
 }
 
 function describeOrder(order) {
-  return `${order.copies} copies × ${order.pages} page(s) = ${order.totalPages} pages · ${PRINT_MODE_LABEL} · ${formatPrice(order.priceCents)}`;
+  const unknown = order.pagesKnown === 0 ? " ⚠️ page count not detected, priced as 1 page per copy — check the file" : "";
+  return `${order.copies} copies × ${order.pages} page(s) = ${order.totalPages} pages · ${PRINT_MODE_LABEL} · ${formatPrice(order.priceCents)}${unknown}`;
 }
 
 async function sendShopEmail(order, resumeFile, paymentProofFile, { summaryOnly = false } = {}) {
-  const subject = paymentProofFile
+  const subject = paymentProofFile || order.paymentKnown
     ? `New print order ${order.orderCode}`
     : `[NO PAYMENT YET] New print order ${order.orderCode}`;
 
@@ -888,7 +1008,8 @@ async function sendShopEmail(order, resumeFile, paymentProofFile, { summaryOnly 
       text: [
         `New print order: ${order.orderCode}`,
         `Printing: ${describeOrder(order)}`,
-        paymentProofFile ? `Payment proof: received` : `Payment proof: ⚠️ NOT ATTACHED — customer submitted without paying yet`,
+        order.paymentLine ?? (paymentProofFile ? `Payment proof: received` : `Payment proof: ⚠️ NOT ATTACHED — customer submitted without paying yet`),
+        ...(describeReceipt(order.receipt, order.priceCents) ? [describeReceipt(order.receipt, order.priceCents)] : []),
         ``,
         `The CV and the customer's details are in Telegram only, and are deleted when you mark the order ready.`
       ].join("\n")
@@ -912,9 +1033,10 @@ async function sendShopEmail(order, resumeFile, paymentProofFile, { summaryOnly 
       `Pickup/delivery location: ${order.location || "not provided"}`,
       `Printing: ${describeOrder(order)}`,
       `Attached file: ${order.originalName}`,
-      paymentProofFile
+      order.paymentLine ?? (paymentProofFile
         ? `Payment proof: attached`
-        : `Payment proof: ⚠️ NOT ATTACHED — customer submitted without paying yet`
+        : `Payment proof: ⚠️ NOT ATTACHED — customer submitted without paying yet`),
+      ...(describeReceipt(order.receipt, order.priceCents) ? [describeReceipt(order.receipt, order.priceCents)] : [])
     ].join("\n"),
     attachments
   });
@@ -931,11 +1053,13 @@ async function sendOrderToTelegram(order, resumeFile, paymentProofFile) {
       `Phone: ${order.phone || "not provided"}`,
       `Pickup/delivery: ${order.location || "not provided"}`,
       `Printing: ${describeOrder(order)}`,
-      paymentProofFile ? `Payment: receipt attached` : `Payment: ⚠️ NOT PAID YET`
+      order.paymentLine ?? (paymentProofFile ? `Payment: receipt attached` : `Payment: ⚠️ NOT PAID YET`),
+      ...(describeReceipt(order.receipt, order.priceCents) ? [describeReceipt(order.receipt, order.priceCents)] : [])
     ].join("\n"),
     replyMarkup: {
       inline_keyboard: [
         ...(printAgentEnabled() ? [[{ text: "🖨 Print on printer", callback_data: `print:${order.orderCode}` }]] : []),
+        ...(order.grandlivre ? [[{ text: "💶 Check payment", callback_data: `paycheck:${order.orderCode}` }]] : []),
         [
           { text: "🖨 Printing", callback_data: `printing:${order.orderCode}` },
           { text: "🚚 Delivery", callback_data: `delivery:${order.orderCode}` }
@@ -1002,12 +1126,37 @@ async function notifyShop(order, resumeFile, paymentProofFile) {
 
 const orderUpload = upload.fields([{ name: "resume", maxCount: 1 }, { name: "paymentProof", maxCount: 1 }]);
 
+const allowInspectFromIp = createRateLimiter({ windowMs: 15 * 60 * 1000, max: Number(process.env.INSPECT_RATE_LIMIT) || 30 });
+
+// Counts the pages of the CV the visitor just chose, so the page can show the real price. Nothing is kept.
+app.post("/api/inspect", (req, res, next) => {
+  if (!allowInspectFromIp(req.ip)) {
+    next(new UserError("too_many_requests", "Too many requests. Please try again in a few minutes.", 429));
+    return;
+  }
+  next();
+}, upload.single("resume"), async (req, res, next) => {
+  let file = req.file;
+  try {
+    if (!file) throw new UserError("file_type", RESUME_TYPE_MESSAGE);
+    file = await resumeAsPdf(file);
+    if (!hasValidSignature(file.path)) throw new UserError("file_type", RESUME_TYPE_MESSAGE);
+    const { pages } = await pageCounter.count(file.path);
+    res.json({ pages, known: pages !== null });
+  } catch (error) {
+    next(error);
+  } finally {
+    if (file) fs.rmSync(file.path, { force: true });
+  }
+});
+
 // Lets the page tell the visitor whether a pasted link works, before they order. Nothing is kept.
 app.post("/api/check-link", linkCheckRateLimit, express.json({ limit: "4kb" }), async (req, res, next) => {
   try {
     const file = await fetchResumeLink(req.body?.url);
+    const { pages } = await pageCounter.count(file.path);
     fs.rmSync(file.path, { force: true });
-    res.json({ ok: true, filename: file.originalName, size: file.size });
+    res.json({ ok: true, filename: file.originalName, size: file.size, pages });
   } catch (error) {
     next(error);
   }
@@ -1037,15 +1186,59 @@ app.post("/api/orders", orderRateLimit, orderUpload, async (req, res, next) => {
         originalname: Buffer.from(downloaded.originalName, "utf8").toString("latin1")
       };
     }
-    order = validateOrder(req.body, resumeFile, paymentProofFile);
+    if (resumeFile) resumeFile = await resumeAsPdf(resumeFile);
+    const pageInfo = resumeFile && hasValidSignature(resumeFile.path) ? await pageCounter.count(resumeFile.path) : { pages: null };
+    order = validateOrder(req.body, resumeFile, paymentProofFile, pageInfo);
     if (!isConfigured()) {
       throw new UserError("unavailable", "Ordering is temporarily unavailable. Please try again later.", 503);
+    }
+    if (grandlivre()) {
+      // Nothing is sent to the shop until the customer reports paying; the price below is the server's own.
+      order.payState = "awaiting_payment";
+      order.payStateAt = sqlTimestamp(new Date());
+      order.statusKey = crypto.randomBytes(16).toString("hex");
     }
     saveOrder(order);
   } catch (error) {
     removeUploads();
     next(error);
     return;
+  }
+
+  let orderMode = "legacy";
+  if (order.payState) {
+    let link = null;
+    try {
+      link = await ensurePayLink(order.orderCode);
+    } catch (error) {
+      console.error(`Order ${order.orderCode}: could not make a Grandlivre link, using Revolut instead:`, error.message);
+    }
+    if (link) {
+      removeUploads({ keepResume: true });
+      res.status(201).json({
+        mode: "grandlivre",
+        orderCode: order.orderCode,
+        statusKey: order.statusKey,
+        token: link.token,
+        totalPages: order.totalPages,
+        price: formatPrice(order.priceCents),
+        amount: (order.priceCents / 100).toFixed(2)
+      });
+      return;
+    }
+    // Grandlivre is unreachable: take the order the old way, flagged as unpaid, and tell the customer to pay by Revolut.
+    orderMode = "revolut";
+    order.payState = "manual_payment";
+    order.paymentLine = "Payment: ⚠️ NOT PAID YET — online payment was unavailable, so the customer was told to pay by Revolut and quote the order code";
+    db.prepare("UPDATE orders SET pay_state = 'manual_payment', pay_state_at = ? WHERE order_code = ?")
+      .run(sqlTimestamp(new Date()), order.orderCode);
+  }
+
+  // Read the receipt's amount while the file still exists, so the shop's message can say whether it matches.
+  if (paymentProofFile) {
+    order.receipt = await receiptChecker.check(paymentProofFile.path, order.priceCents);
+    db.prepare("UPDATE orders SET receipt_status = ?, receipt_cents = ? WHERE order_code = ?")
+      .run(order.receipt.status, order.receipt.paidCents ?? null, order.orderCode);
   }
 
   const received = await notifyShop(order, resumeFile, paymentProofFile);
@@ -1065,12 +1258,335 @@ app.post("/api/orders", orderRateLimit, orderUpload, async (req, res, next) => {
   });
 
   res.status(201).json({
+    mode: orderMode,
     orderCode: order.orderCode,
     totalPages: order.totalPages,
     price: formatPrice(order.priceCents),
+    amount: (order.priceCents / 100).toFixed(2),
     message: "Your print request is on its way. Check your email for confirmation."
   });
 });
+
+// ---- Grandlivre payments -------------------------------------------------------------------------
+
+const linksInFlight = new Map();
+
+// One link per order: an existing one is reused, and simultaneous calls share a single request.
+function ensurePayLink(orderCode) {
+  const existing = db.prepare("SELECT pay_link_id, pay_link_token, pay_link_url FROM orders WHERE order_code = ?").get(orderCode);
+  if (existing?.pay_link_id && existing.pay_link_token) {
+    return Promise.resolve({ id: existing.pay_link_id, token: existing.pay_link_token, url: existing.pay_link_url });
+  }
+  if (linksInFlight.has(orderCode)) return linksInFlight.get(orderCode);
+
+  const work = (async () => {
+    const config = grandlivre();
+    const row = db.prepare("SELECT price_cents FROM orders WHERE order_code = ?").get(orderCode);
+    if (!config || !row) throw new Error("Grandlivre is not configured or the order is missing");
+    const link = await createPayLink(config, { orderCode, priceCents: row.price_cents });
+    db.prepare("UPDATE orders SET pay_link_id = ?, pay_link_token = ?, pay_link_url = ? WHERE order_code = ?")
+      .run(link.id, link.token, link.url, orderCode);
+    return link;
+  })().finally(() => linksInFlight.delete(orderCode));
+  linksInFlight.set(orderCode, work);
+  return work;
+}
+
+function orderFromRow(row) {
+  const pages = row.pages || 1;
+  return {
+    orderCode: row.order_code,
+    customerEmail: row.customer_email,
+    phone: row.phone,
+    location: row.location,
+    copies: row.copies,
+    pages,
+    totalPages: row.copies * pages,
+    priceCents: row.price_cents,
+    pagesKnown: row.pages_known,
+    originalName: row.original_name,
+    grandlivre: true,
+    paymentKnown: true
+  };
+}
+
+const euros = (value) => `€${Number(value).toFixed(2)}`;
+const insertPaymentEvent = db.prepare(`
+  INSERT OR IGNORE INTO grandlivre_events (notice, state, event, delivery, order_code, source)
+  VALUES (@notice, @state, @event, @delivery, @orderCode, @source)
+`);
+
+// Records one payment event and moves the order's payment state. Safe to call twice with the same event.
+// Returns what happened and what should now be done about it (see runPaymentEffects).
+function applyPaymentEvent(evt, source = "webhook") {
+  const state = String(evt.state || "");
+  if (!["reported", "confirmed", "declined"].includes(state) || !evt.notice || !evt.ref) return { result: "ignored" };
+
+  return db.transaction(() => {
+    const row = db.prepare("SELECT * FROM orders WHERE order_code = ?").get(String(evt.ref));
+    if (!row || !row.pay_state) return { result: "unknown_order" };
+
+    const recorded = insertPaymentEvent.run({
+      notice: String(evt.notice), state, event: evt.event || `payment.${state}`,
+      delivery: evt.delivery || `${source}-${crypto.randomUUID()}`, orderCode: row.order_code, source
+    });
+    if (recorded.changes === 0) return { result: "duplicate" };
+    const finish = (result, extra = {}) => {
+      db.prepare("UPDATE grandlivre_events SET result = ? WHERE id = ?").run(result, recorded.lastInsertRowid);
+      return { result, row, evt, state, ...extra };
+    };
+
+    if (["expired", "cancelled", "manual_payment"].includes(row.pay_state)) return finish("order_closed");
+
+    const consistent = linkMatches(evt.link, row) && amountMatches(evt.amount, evt.currency, row.price_cents);
+    if (!consistent) {
+      if (row.pay_state !== "paid") {
+        db.prepare("UPDATE orders SET pay_state = 'payment_mismatch', pay_state_at = ? WHERE order_code = ?")
+          .run(sqlTimestamp(new Date()), row.order_code);
+      }
+      return finish("mismatch");
+    }
+
+    const to = nextPayState(row.pay_state, state);
+    if (to === row.pay_state) return finish("unchanged");
+    db.prepare("UPDATE orders SET pay_state = ?, pay_state_at = ?, paid_at = CASE WHEN ? = 'paid' THEN ? ELSE paid_at END WHERE order_code = ?")
+      .run(to, sqlTimestamp(new Date()), to, sqlTimestamp(new Date()), row.order_code);
+    return finish("applied", { from: row.pay_state, to });
+  })();
+}
+
+function payerText(evt) {
+  return `${evt.payerName ? ` by ${String(evt.payerName).slice(0, 60)}` : ""}${evt.receipt ? " (proof attached)" : ""}`;
+}
+
+// Tells the shop once, using the order's files, with the payment line saying where the money stands.
+async function notifyShopOnce(orderCode, paymentLine) {
+  const claimed = db.prepare("UPDATE orders SET shop_notified = 1 WHERE order_code = ? AND shop_notified = 0").run(orderCode).changes === 1;
+  if (!claimed) return;
+  const row = db.prepare("SELECT * FROM orders WHERE order_code = ?").get(orderCode);
+  const filePath = path.join(uploadDir, row.stored_name);
+  if (!fs.existsSync(filePath)) {
+    await notifyAdmin(`⚠️ ${orderCode}: the payment came in but the CV is no longer on the server. Ask the customer to send it again.`);
+    return;
+  }
+  const order = { ...orderFromRow(row), paymentLine };
+  const resumeFile = { path: filePath, filename: row.stored_name, originalname: Buffer.from(row.original_name, "utf8").toString("latin1") };
+  const delivered = await notifyShop(order, resumeFile, null);
+  if (!delivered) {
+    db.prepare("UPDATE orders SET shop_notified = 0 WHERE order_code = ?").run(orderCode);
+    return;
+  }
+  // As with a normal order, the shop has the file now; keep ours only if the printer fetches it.
+  if (!(printAgentEnabled() && isTelegramConfigured())) fs.rmSync(filePath, { force: true });
+}
+
+async function sendPaymentEmail(row, subject, lines) {
+  await makeTransporter().sendMail({ from: mailFrom(), to: row.customer_email, subject, text: lines.join("\n") });
+}
+
+// The slow part of a payment event: messages, emails, and releasing the print job. Never throws.
+async function runPaymentEffects(outcome) {
+  try {
+    const { row, evt, state } = outcome;
+    if (outcome.result === "mismatch") {
+      await notifyAdmin(`⚠️ A payment (${state}) for ${row.order_code} does not match the order: it says ${euros(evt.amount)} ${String(evt.currency || "").toUpperCase()} but the order is ${euros(row.price_cents / 100)}, or it belongs to a different link. The order is NOT marked paid.`);
+      return;
+    }
+    if (outcome.result === "order_closed") {
+      await notifyAdmin(`⚠️ A payment (${state}) of ${euros(evt.amount)}${payerText(evt)} arrived for order ${row.order_code}, which is ${row.pay_state}. Check it in Grandlivre and contact the customer or refund.`);
+      return;
+    }
+    if (outcome.result !== "applied") return;
+
+    if (outcome.to === "payment_reported") {
+      await notifyShopOnce(row.order_code, `Payment: 💶 reported${payerText(evt)} for ${euros(evt.amount)}. Waiting for you to confirm the money in Grandlivre.`);
+      await notifyAdmin(`💶 Payment reported for ${row.order_code}${payerText(evt)}: ${euros(evt.amount)}. Mark it received in Grandlivre (Profile › Money › Payments) once the money is in.`);
+    } else if (outcome.to === "paid") {
+      await notifyShopOnce(row.order_code, `Payment: ✅ confirmed in Grandlivre, ${euros(evt.amount)}.`);
+      const fresh = db.prepare("SELECT * FROM orders WHERE order_code = ?").get(row.order_code);
+      if (db.prepare("UPDATE orders SET confirmation_sent = 1 WHERE order_code = ? AND confirmation_sent = 0").run(row.order_code).changes === 1) {
+        sendPaymentEmail(fresh, `Payment confirmed — print order ${row.order_code}`, [
+          `Thanks — your payment is confirmed.`,
+          `Order: ${row.order_code}`,
+          `Printing: ${describeOrder(orderFromRow(fresh))}`,
+          `We'll let you know when it is ready.`
+        ]).catch((error) => console.error(`Order ${row.order_code}: payment email failed:`, error.message));
+      }
+      let printing = false;
+      if (printAgentEnabled() && isTelegramConfigured() && fs.existsSync(path.join(uploadDir, fresh.stored_name))) {
+        printing = db.prepare("UPDATE orders SET print_status = 'queued', print_claimed_at = NULL WHERE order_code = ? AND (print_status IS NULL OR print_status = 'failed')")
+          .run(row.order_code).changes === 1;
+      }
+      await notifyAdmin(printing
+        ? `✅ Payment confirmed for ${row.order_code}. It is queued for the printer.`
+        : `✅ Payment confirmed for ${row.order_code}. Print it from the order message above.`);
+    } else if (outcome.to === "payment_problem") {
+      const fresh = db.prepare("SELECT * FROM orders WHERE order_code = ?").get(row.order_code);
+      sendPaymentEmail(fresh, `Problem with the payment for order ${row.order_code}`, [
+        `We could not confirm your payment for order ${row.order_code}.`,
+        `Please contact us and quote the order code so we can sort it out.`
+      ]).catch((error) => console.error(`Order ${row.order_code}: payment email failed:`, error.message));
+      await notifyAdmin(`⚠️ Payment for ${row.order_code} was declined in Grandlivre. The customer was emailed to contact you.`);
+    }
+  } catch (error) {
+    console.error("Payment follow-up failed:", error);
+  }
+}
+
+// Asks Grandlivre where an order's payments stand and applies them: the fallback for a missed webhook.
+async function refreshPayment(orderCode) {
+  const config = grandlivre();
+  const row = db.prepare("SELECT pay_state FROM orders WHERE order_code = ?").get(orderCode);
+  if (!config || !row?.pay_state) return null;
+  db.prepare("UPDATE orders SET pay_checked_at = ? WHERE order_code = ?").run(Date.now(), orderCode);
+  for (const notice of await fetchNotices(config, orderCode)) {
+    await runPaymentEffects(applyPaymentEvent({ ...notice, event: `payment.${notice.state}` }, "poll"));
+  }
+  return db.prepare("SELECT pay_state FROM orders WHERE order_code = ?").get(orderCode).pay_state;
+}
+
+// Reported payments nobody has confirmed after a few minutes are checked directly.
+async function checkReportedPayments() {
+  if (!grandlivre()) return;
+  const stale = sqlTimestamp(new Date(Date.now() - PAY_REPORTED_RECHECK_MINUTES * 60 * 1000));
+  const rows = db.prepare(`
+    SELECT order_code FROM orders
+    WHERE pay_state = 'payment_reported' AND pay_state_at < ? AND (pay_checked_at IS NULL OR pay_checked_at < ?)
+    LIMIT 20
+  `).all(stale, Date.now() - 2 * 60 * 1000);
+  for (const { order_code: orderCode } of rows) {
+    await refreshPayment(orderCode).catch((error) => console.error(`Payment check for ${orderCode} failed:`, error.message));
+  }
+}
+
+// Orders nobody paid for: drop the CV and the contact details, and close the payment link.
+function expireUnpaidOrders() {
+  const cutoff = sqlTimestamp(new Date(Date.now() - PAY_HOLD_HOURS * 60 * 60 * 1000));
+  const rows = db.prepare("SELECT order_code, stored_name, pay_link_id FROM orders WHERE pay_state = 'awaiting_payment' AND created_at < ?").all(cutoff);
+  for (const row of rows) {
+    fs.rmSync(path.join(uploadDir, row.stored_name), { force: true });
+    db.prepare(`
+      UPDATE orders SET pay_state = 'expired', pay_state_at = ?, customer_email = ?, phone = NULL, location = NULL, original_name = ?
+      WHERE order_code = ?
+    `).run(sqlTimestamp(new Date()), DELETED_MARK, DELETED_MARK, row.order_code);
+    closeLinkQuietly(row.pay_link_id);
+  }
+  return rows.length;
+}
+
+function closeLinkQuietly(linkId) {
+  const config = grandlivre();
+  if (!config || !linkId) return;
+  closePayLink(config, linkId).catch((error) => console.error("Could not close a Grandlivre link:", error.message));
+}
+
+const allowStatusFromIp = createRateLimiter({ windowMs: 60 * 1000, max: 60 });
+const allowWebhookFromIp = createRateLimiter({ windowMs: 60 * 1000, max: 120 });
+
+function findOrderByKey(code, key) {
+  if (!ORDER_CODE_PATTERN.test(code) || typeof key !== "string" || !/^[0-9a-f]{32}$/.test(key)) return null;
+  const row = db.prepare("SELECT * FROM orders WHERE order_code = ? AND status_key IS NOT NULL").get(code);
+  if (!row) return null;
+  const received = Buffer.from(key);
+  const expected = Buffer.from(row.status_key);
+  return received.length === expected.length && crypto.timingSafeEqual(received, expected) ? row : null;
+}
+
+const CUSTOMER_PAY_STATES = {
+  awaiting_payment: "awaiting",
+  payment_reported: "confirming",
+  paid: "paid",
+  payment_problem: "problem",
+  payment_mismatch: "problem",
+  manual_payment: "manual",
+  expired: "expired",
+  cancelled: "expired"
+};
+
+// What the customer's page shows. Asking again (reload, or a long wait) also lets us catch a missed webhook.
+app.get("/api/orders/:code/status", (req, res, next) => {
+  if (!allowStatusFromIp(req.ip)) {
+    next(new UserError("too_many_requests", "Too many requests. Please try again in a few minutes.", 429));
+    return;
+  }
+  (async () => {
+    let row = findOrderByKey(req.params.code, req.get("X-Order-Key"));
+    if (!row || !row.pay_state) {
+      res.status(404).json({ error: "Order not found.", code: "not_found" });
+      return;
+    }
+    const lingering = row.pay_state === "payment_reported"
+      && row.pay_state_at < sqlTimestamp(new Date(Date.now() - PAY_REPORTED_RECHECK_MINUTES * 60 * 1000));
+    const reloaded = req.query.reload === "1" && ["awaiting_payment", "payment_reported", "payment_problem"].includes(row.pay_state);
+    if ((lingering || reloaded) && grandlivre() && (!row.pay_checked_at || row.pay_checked_at < Date.now() - 20 * 1000)) {
+      await refreshPayment(row.order_code).catch((error) => console.error(`Payment check for ${row.order_code} failed:`, error.message));
+      row = db.prepare("SELECT * FROM orders WHERE order_code = ?").get(row.order_code);
+    }
+    const state = CUSTOMER_PAY_STATES[row.pay_state] || "problem";
+    res.set("Cache-Control", "no-store").json({
+      state,
+      orderCode: row.order_code,
+      amount: (row.price_cents / 100).toFixed(2),
+      ...(state === "awaiting" && row.pay_link_token ? { token: row.pay_link_token } : {})
+    });
+  })().catch(next);
+});
+
+// "Start over": drop an order that has not been paid, close its link and delete its CV.
+app.post("/api/orders/:code/cancel", express.json({ limit: "1kb" }), (req, res, next) => {
+  if (!allowStatusFromIp(req.ip)) {
+    next(new UserError("too_many_requests", "Too many requests. Please try again in a few minutes.", 429));
+    return;
+  }
+  const row = findOrderByKey(req.params.code, req.body?.key);
+  if (!row || row.pay_state !== "awaiting_payment") {
+    res.status(404).json({ error: "Order not found.", code: "not_found" });
+    return;
+  }
+  fs.rmSync(path.join(uploadDir, row.stored_name), { force: true });
+  db.prepare(`
+    UPDATE orders SET pay_state = 'cancelled', pay_state_at = ?, customer_email = ?, phone = NULL, location = NULL, original_name = ?
+    WHERE order_code = ?
+  `).run(sqlTimestamp(new Date()), DELETED_MARK, DELETED_MARK, row.order_code);
+  closeLinkQuietly(row.pay_link_id);
+  res.sendStatus(204);
+});
+
+// Grandlivre tells us when a payment is reported, confirmed or declined. Only the signature decides who may call.
+app.post("/grandlivre/webhook", (req, res, next) => {
+  if (!allowWebhookFromIp(req.ip)) {
+    res.sendStatus(429);
+    return;
+  }
+  next();
+}, express.raw({ type: () => true, limit: "100kb" }), (req, res) => {
+  const config = grandlivre();
+  const delivery = String(req.get("X-Grandlivre-Delivery") || "").slice(0, 80);
+  const eventName = String(req.get("X-Grandlivre-Event") || "").slice(0, 40);
+  if (!config || !Buffer.isBuffer(req.body)
+    || !verifySignature({ header: req.get("X-Grandlivre-Signature"), rawBody: req.body, secret: config.secret })) {
+    console.warn(`Grandlivre webhook rejected: delivery=${delivery} event=${eventName}`);
+    res.status(401).json({ error: "Invalid signature.", code: "bad_signature" });
+    return;
+  }
+  let body;
+  try {
+    body = JSON.parse(req.body.toString("utf8"));
+  } catch {
+    res.status(400).json({ error: "Invalid request.", code: "bad_request" });
+    return;
+  }
+  if (body?.test === true || eventName === "payment.test") {
+    console.log(`Grandlivre test delivery received: delivery=${delivery}`);
+    res.json({ ok: true, test: true });
+    return;
+  }
+  const outcome = applyPaymentEvent({ ...body, event: eventName || body?.event, delivery }, "webhook");
+  console.log(`Grandlivre delivery=${delivery} event=${eventName} order=${String(body?.ref || "").slice(0, 20)} result=${outcome.result}`);
+  res.json({ ok: true });
+  runPaymentEffects(outcome);
+});
+app.all("/grandlivre/webhook", (_req, res) => res.set("Allow", "POST").sendStatus(405));
 
 function isAuthorizedAgent(req) {
   const token = process.env.PRINT_AGENT_TOKEN;
@@ -1175,6 +1691,20 @@ app.post("/api/agent/status", requireAgent, express.json({ limit: "10kb" }), (re
   res.sendStatus(204);
 });
 
+// Public and deliberately coarse: the main page shows a green light when the printer can take orders now.
+// "online": the agent reported in the last few minutes and the printer is ready; "attention": the agent is there
+// but the printer needs a person (paper, toner, jam, door); "offline": no recent report from the agent.
+function publicPrinterState() {
+  if (!printerStatus) return "offline";
+  if (Date.now() - printerStatus.receivedAt >= PRINTER_STATUS_STALE_MINUTES * 60000) return "offline";
+  if (printerStatus.state === "stopped" || /empty|jam|open|offline|error/i.test(printerStatus.reasons || "")) return "attention";
+  return "online";
+}
+
+app.get("/api/printer-status", (_req, res) => {
+  res.set("Cache-Control", "no-store").json({ status: publicPrinterState() });
+});
+
 app.post("/api/telegram-webhook",express.json({ limit: "100kb" }), (req, res) => {
   res.sendStatus(200);
   if (!isAuthorizedWebhook(req)) return;
@@ -1206,7 +1736,7 @@ app.use((error, _req, res, _next) => {
   res.status(500).json({ error: "Something went wrong. Please try again.", code: "server_error" });
 });
 
-export { app, db, linkFetcher, mailLog, priceCents, runRetention };
+export { app, checkReportedPayments, db, ensurePayLink, expireUnpaidOrders, linkFetcher, mailLog, pageCounter, pdfConverter, priceCents, receiptChecker, refreshPayment, runRetention };
 
 // PM2 loads the script through its own wrapper, so argv[1] is not this file there.
 const entryCandidates = [process.argv[1], process.env.pm_exec_path].filter(Boolean);
@@ -1216,5 +1746,7 @@ if (entryCandidates.some((candidate) => path.resolve(candidate) === fileURLToPat
     registerTelegramWebhook();
     runRetention();
     setInterval(runRetention, 12 * 60 * 60 * 1000).unref();
+    setInterval(expireUnpaidOrders, 60 * 60 * 1000).unref();
+    setInterval(() => checkReportedPayments().catch((error) => console.error("Payment recheck failed:", error.message)), 2 * 60 * 1000).unref();
   });
 }

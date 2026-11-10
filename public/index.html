@@ -4,14 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Send your resume to print in a few clicks." />
-    <title>Print Point — Resume printing</title>
+    <title>Print CV — Resume printing</title>
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="64x64" href="/favicon-64.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Print Point" />
-    <meta property="og:title" content="Print Point — Resume printing" />
+    <meta property="og:site_name" content="Print CV" />
+    <meta property="og:title" content="Print CV — Resume printing" />
     <meta property="og:description" content="Attach your resume, choose copies, pay, and get it printed." />
     <meta property="og:url" content="https://print.unilu.space/" />
     <meta property="og:image" content="https://print.unilu.space/preview.png" />
@@ -19,7 +19,7 @@
     <meta property="og:image:height" content="630" />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Print Point — Resume printing" />
+    <meta name="twitter:title" content="Print CV — Resume printing" />
     <meta name="twitter:description" content="Attach your resume, choose copies, pay, and get it printed." />
     <meta name="twitter:image" content="https://print.unilu.space/preview.png" />
 
@@ -48,18 +48,54 @@
               <option value="ja">日本語</option>
             </select>
           </div>
-          <h2 id="form-title">Print Point</h2>
+          <h2 id="form-title">Print CV</h2>
         </div>
+
+        <section class="pickup-card" aria-labelledby="pickup-title">
+          <div class="printer-location">
+            <img src="/printer-location.jpg" width="900" height="686" loading="lazy" alt="The printer on a blue chair next to the foosball table" data-i18n-alt="locationPhotoAlt" />
+            <div>
+              <p class="printer-status" id="printer-status" data-state="checking" role="status" aria-live="polite"><span class="printer-status-dot" aria-hidden="true"></span><span id="printer-status-text" data-i18n="printerChecking">Checking printer…</span></p>
+              <h3 class="printer-location-title" id="pickup-title" data-i18n="printerWhereTitle">📍 Pickup point: Student Lounge (football tables)</h3>
+              <p class="printer-location-sub" data-i18n="printerWhereText">Main building, ground floor · Campus Kirchberg, University of Luxembourg</p>
+              <a href="https://www.google.com/maps/search/?api=1&amp;query=University+of+Luxembourg+Campus+Kirchberg" target="_blank" rel="noopener noreferrer" data-i18n="printerWhereMap">Open in Maps →</a>
+            </div>
+          </div>
+          <svg class="pickup-map" viewBox="0 0 560 280" role="img" aria-labelledby="pickup-map-title">
+            <title id="pickup-map-title" data-i18n="mapAlt">Ground floor map: from the main entrance walk in, keep right at the pillar to the Student Lounge with the football tables</title>
+            <rect class="map-wall" x="10" y="10" width="540" height="225" rx="3" />
+            <text class="map-floor" x="28" y="36" data-i18n="mapGroundFloor">GROUND FLOOR</text>
+            <rect class="map-board" x="30" y="66" width="9" height="22" />
+            <rect class="map-board" x="30" y="96" width="9" height="22" />
+            <rect class="map-board" x="30" y="126" width="9" height="22" />
+            <text class="map-small" x="48" y="102" data-i18n="mapNoticeBoards">notice boards</text>
+            <rect class="map-pillar" x="318" y="70" width="16" height="16" />
+            <text class="map-small map-end" x="310" y="76" data-i18n="mapPillar1">pillar with</text>
+            <text class="map-small map-end" x="310" y="90" data-i18n="mapPillar2">“Student Lounge” sign</text>
+            <rect class="map-lounge" x="376" y="40" width="166" height="186" />
+            <text class="map-lounge-name" x="459" y="78" data-i18n="mapLounge">STUDENT LOUNGE</text>
+            <text class="map-label" x="459" y="112" data-i18n="mapFootball">⚽ football tables</text>
+            <circle class="map-sign" cx="459" cy="160" r="16" />
+            <path class="map-sign-arrow" d="M459 169 V152 M452 158 L459 151 L466 158" />
+            <text class="map-sign-label" x="459" y="198" data-i18n="mapPrintSign">Print CV sign</text>
+            <path class="map-route" d="M190 236 V140 H352" />
+            <path class="map-route-head" d="M350 130 L368 140 L350 150 Z" />
+            <text class="map-walk" x="356" y="124" data-i18n="mapWalk">walk in, keep right</text>
+            <line class="map-door" x1="146" y1="235" x2="234" y2="235" />
+            <text class="map-entrance" x="190" y="262" data-i18n="mapEntrance">MAIN ENTRANCE (glass doors)</text>
+          </svg>
+          <p class="pickup-directions" data-i18n="printerWhereDirections">Go in through the glass doors of the main entrance, walk past the notice boards on your left and turn right at the pillar with the “Student Lounge” sign. The printer is by the football tables, under the Print CV sign.</p>
+        </section>
 
         <form id="order-form" novalidate>
           <fieldset class="form-group">
             <legend data-i18n="step1">1. Attach your resume</legend>
             <a class="no-cv-link" href="https://tsech.online/?mode=cv&lang=en" target="_blank" rel="noopener noreferrer" data-i18n="noCvLink">Don't have a resume yet? Create one here →</a>
             <label class="dropzone" id="dropzone" for="resume">
-              <input id="resume" name="resume" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+              <input id="resume" name="resume" type="file" accept=".pdf,.doc,.docx,.odt,.rtf,.txt,.pages,.ppt,.pptx,.pps,.ppsx,.odp,.key,.xls,.xlsx,.ods,.csv,.md,.markdown,.epub,.djvu,.jpg,.jpeg,.png,.webp,.heic" />
               <span class="upload-icon" aria-hidden="true">↑</span>
               <span class="upload-title" data-i18n="uploadTitle">Choose a file or drag it here</span>
-              <span class="upload-note" data-i18n="uploadNote">PDF, DOC or DOCX · max 10 MB</span>
+              <span class="upload-note" data-i18n="uploadNote">PDF, Word, PowerPoint, Excel, Pages, DjVu, Markdown, EPUB, TXT, photos… · max 10 MB</span>
             </label>
             <p class="file-name" id="file-name" aria-live="polite"></p>
             <div class="link-row">
@@ -72,7 +108,7 @@
             </div>
           </fieldset>
 
-          <div class="form-row">
+          <div class="form-row" data-step="2">
             <fieldset class="form-group">
               <legend data-i18n="step2">2. Number of copies</legend>
               <div class="stepper" aria-label="Number of copies" data-i18n-aria-label="copiesAria">
@@ -80,8 +116,6 @@
                 <input id="copies" name="copies" type="number" min="4" max="100" value="4" inputmode="numeric" required />
                 <button type="button" class="stepper-button" id="increase" aria-label="Increase copies" data-i18n-aria-label="increaseAria">+</button>
               </div>
-              <label class="pages-label" for="pages" data-i18n="pagesLabel">Pages in your document</label>
-              <input class="pages-input" id="pages" name="pages" type="number" min="1" max="50" value="1" inputmode="numeric" required />
             </fieldset>
 
             <fieldset class="form-group">
@@ -95,20 +129,22 @@
             </fieldset>
           </div>
 
-          <div class="price-summary" id="price-summary">
+          <div class="price-summary" id="price-summary" data-step="2">
             <p class="price-rates" data-i18n="priceRatesNote">Black &amp; white: €0.50/page, €0.30/additional page after 10. Minimum order: 4 pages.</p>
             <p class="price-total"><span data-i18n="totalLabel">Total service</span>: <strong id="price-total-amount"></strong></p>
           </div>
 
-          <fieldset class="form-group email-group">
+          <fieldset class="form-group email-group" data-step="3">
             <legend data-i18n="step4">4. Contact &amp; pickup details</legend>
             <label class="sr-only" for="email" data-i18n="emailLabel">Email address</label>
             <input id="email" name="email" type="email" placeholder="you@example.com" autocomplete="email" maxlength="254" required />
             <p data-i18n="emailNote">We’ll email a confirmation to this address.</p>
 
-            <label class="sr-only" for="phone" data-i18n="phoneLabel">Phone number (optional)</label>
-            <input id="phone" name="phone" type="tel" placeholder="+352 621 234 567" autocomplete="tel" maxlength="40" />
-            <p data-i18n="phoneNote">Optional — we may call or message you when your order is ready.</p>
+            <div class="field-point" data-step="4">
+              <label class="sr-only" for="phone" data-i18n="phoneLabel">Phone number (optional)</label>
+              <input id="phone" name="phone" type="tel" placeholder="+352 621 234 567" autocomplete="tel" maxlength="40" />
+              <p data-i18n="phoneNote">Optional — we may call or message you when your order is ready.</p>
+            </div>
 
             <div class="payment-box" id="payment-box" hidden>
               <p class="payment-note" data-i18n="payInstruction">Pay via Revolut before submitting, then use your email as the payment note so we can match it to your order.</p>
@@ -117,13 +153,15 @@
               </a>
             </div>
 
-            <label class="sr-only" for="location" data-i18n="locationLabel">Pickup or delivery location</label>
-            <input id="location" name="location" type="text" placeholder="e.g. Maison du Savoir reception, or a delivery address" maxlength="300" />
-            <p data-i18n="locationNote">Optional — tell us where to hand off your prints.</p>
-            <button type="button" class="location-share-btn" id="share-location-btn">
-              <span data-i18n="shareLocationButton">📍 Share my exact location</span>
-            </button>
-            <p class="location-share-status" id="location-share-status" aria-live="polite"></p>
+            <div class="field-point" data-step="5">
+              <label class="sr-only" for="location" data-i18n="locationLabel">Pickup or delivery location</label>
+              <input id="location" name="location" type="text" placeholder="e.g. Kirchberg main building, room 2.15" data-i18n-placeholder="locationPlaceholder" maxlength="300" />
+              <p data-i18n="locationNote">Optional — tell us where to hand off your prints.</p>
+              <button type="button" class="location-share-btn" id="share-location-btn">
+                <span data-i18n="shareLocationButton">📍 Share my exact location</span>
+              </button>
+              <p class="location-share-status" id="location-share-status" aria-live="polite"></p>
+            </div>
           </fieldset>
 
           <div class="modal-overlay" id="payment-proof-overlay" hidden>
@@ -140,10 +178,20 @@
             </div>
           </div>
 
-          <button class="submit-button" id="submit-button" type="submit">
+          <p class="offline-notice" id="offline-notice-form" role="alert" data-i18n="offlineNoticeForm" hidden>⚠️ The printer is not online right now. Leave your phone number and your room in the contact details above, and we will contact you and bring the order to your room. Otherwise, come to us later to pick it up.</p>
+          <button class="submit-button" id="submit-button" type="submit" data-step="6">
             <span data-i18n="submit">Send print request</span><span aria-hidden="true">→</span>
           </button>
           <p class="form-message" id="form-message" aria-live="polite"></p>
+
+          <section class="pay-panel" id="pay-panel" hidden>
+            <p class="pay-title" id="pay-title"></p>
+            <p class="pay-status" id="pay-status" aria-live="polite"></p>
+            <p class="offline-notice" id="offline-notice-pay" role="alert" data-i18n="offlineNoticePay" hidden>⚠️ The printer is not online right now. You can still pay: we will print your order as soon as it is back. If you left your phone number and room, we will contact you and bring the order to your room; otherwise, come to us later to pick it up.</p>
+            <div class="pay-widget" id="pay-widget"></div>
+            <a class="payment-link" id="pay-fallback-link" href="https://revolut.me/kovyaz" target="_blank" rel="noopener noreferrer" hidden>Revolut</a>
+            <button type="button" class="pay-restart" id="pay-restart" data-i18n="payStartOver" hidden>Start a new order</button>
+          </section>
           <p class="privacy-note" data-i18n="privacyNote">We use your file and contact details only to print your order, and delete them as soon as it is ready.</p>
         </form>
       </section>

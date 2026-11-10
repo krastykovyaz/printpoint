@@ -1,7 +1,7 @@
 # Copy to /etc/systemd/system/, put the token in /etc/printpoint-agent.env (mode 600), then:
 #   systemctl enable --now printpoint-agent
 [Unit]
-Description=Print Point print agent
+Description=Print CV print agent
 After=network-online.target cups.service
 Wants=network-online.target
 

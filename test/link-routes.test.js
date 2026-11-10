@@ -41,7 +41,7 @@ test("check-link reports a good link and keeps nothing", async () => {
   serveFake();
   const response = await checkLink("https://cv.example.test/cv.pdf");
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { ok: true, filename: "Мой CV.pdf", size: 20 });
+  assert.deepEqual(await response.json(), { ok: true, filename: "Мой CV.pdf", size: 20, pages: null });
   assert.deepEqual(uploads(), []);
 });
 
